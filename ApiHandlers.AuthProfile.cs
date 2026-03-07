@@ -29,18 +29,17 @@ public static partial class ApiHandlers
             return LoginError(context, StatusCodes.Status422UnprocessableEntity, "Email and password are required");
         }
 
+        var companyHeader = context.Request.Headers["company"].FirstOrDefault()?.Trim();
         var companyFromHeader = await ResolveCompanyFromHeaderAsync(context, db);
-        if (context.Request.Headers.ContainsKey("company") && companyFromHeader is null)
+        var companyCodeForCandidates = companyFromHeader?.Code;
+        if (string.IsNullOrWhiteSpace(companyCodeForCandidates) && !string.IsNullOrWhiteSpace(companyHeader))
         {
-            return LoginError(context, StatusCodes.Status404NotFound, "Company not found.", new
-            {
-                company_header = context.Request.Headers["company"].FirstOrDefault()?.Trim(),
-                email = request.Email.Trim(),
-                suggestion = "Call POST /api/login/diagnostics with the same payload and company header to inspect the login flow."
-            });
+            // Fallback for mobile clients that prefix the username with the raw company header
+            // even when tbl_m_company.code is not aligned with that header value.
+            companyCodeForCandidates = companyHeader;
         }
 
-        var candidates = BuildLoginCandidates(request.Email, companyFromHeader?.Code);
+        var candidates = BuildLoginCandidates(request.Email, companyCodeForCandidates);
         if (candidates.Length == 0)
         {
             return LoginError(context, StatusCodes.Status422UnprocessableEntity, "Invalid login identity");
@@ -189,13 +188,17 @@ VALUES
         var companyHeader = context.Request.Headers["company"].FirstOrDefault()?.Trim() ?? string.Empty;
         var identity = request.Email?.Trim() ?? string.Empty;
         var candidatesWithoutCompany = BuildLoginCandidates(identity, null);
-        var candidatesWithHeader = BuildLoginCandidates(identity, companyHeader);
+        var companyFromHeader = await ResolveCompanyFromHeaderAsync(context, db);
+        var companyCodeForCandidates = companyFromHeader?.Code;
+        if (string.IsNullOrWhiteSpace(companyCodeForCandidates) && !string.IsNullOrWhiteSpace(companyHeader))
+        {
+            companyCodeForCandidates = companyHeader;
+        }
+        var candidatesWithHeader = BuildLoginCandidates(identity, companyCodeForCandidates);
         var candidates = candidatesWithHeader
             .Concat(candidatesWithoutCompany)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-
-        var companyFromHeader = await ResolveCompanyFromHeaderAsync(context, db);
 
         var users = (await db.QueryAsync<LoginDiagnosticUserRow>(@"
 SELECT id,
@@ -368,11 +371,11 @@ ORDER BY MAX(created_at) DESC, request_type", new { CompanyIds = companyIds })).
                 step = "company_lookup",
                 status = string.IsNullOrWhiteSpace(companyHeader)
                     ? "skipped"
-                    : (companyFromHeader is null ? "error" : "ok"),
+                    : (companyFromHeader is null ? "warning" : "ok"),
                 input = companyHeader,
                 message = string.IsNullOrWhiteSpace(companyHeader)
                     ? "company header not provided"
-                    : (companyFromHeader is null ? "company header did not match tbl_m_company" : "company matched"),
+                    : (companyFromHeader is null ? "company header did not match tbl_m_company, fallback candidate stripping is still applied" : "company matched"),
                 company = companyFromHeader
             },
             new
