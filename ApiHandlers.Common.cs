@@ -316,6 +316,32 @@ VALUES
         return values.Distinct(StringComparer.Ordinal).ToArray();
     }
 
+    public static string DescribeStoredPasswordMode(string? storedHash)
+    {
+        var value = (storedHash ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "empty";
+        }
+
+        if (LooksLikeEncryptedPassword(value))
+        {
+            return "encrypted";
+        }
+
+        if (value.StartsWith("$2", StringComparison.Ordinal))
+        {
+            return "bcrypt";
+        }
+
+        if (Regex.IsMatch(value, "^[A-Fa-f0-9]{64}$"))
+        {
+            return "sha256";
+        }
+
+        return "plain";
+    }
+
     public static bool VerifyPassword(
         string plainPassword,
         string storedHash,

@@ -153,6 +153,7 @@ api.MapGet("/health", ApiHandlers.HealthAsync);
 api.MapGet("/health/detail", ApiHandlers.HealthDetailAsync);
 
 api.MapPost("/login", ApiHandlers.LoginAsync);
+api.MapPost("/login/diagnostics", ApiHandlers.LoginDiagnosticsAsync);
 api.MapPost("/logout", ApiHandlers.LogoutAsync);
 api.MapGet("/profile", ApiHandlers.ProfileAsync);
 api.MapPost("/profile/password", ApiHandlers.ChangePasswordAsync);
