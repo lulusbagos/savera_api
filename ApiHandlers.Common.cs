@@ -194,7 +194,11 @@ LIMIT 1";
         }
 
         return await db.QuerySingleOrDefaultAsync<CompanyRow>(
-            "SELECT id, code, name FROM public.tbl_m_company WHERE deleted_at IS NULL AND code=@Code LIMIT 1",
+            @"SELECT id, code, name
+              FROM public.tbl_m_company
+              WHERE deleted_at IS NULL
+                AND lower(trim(code)) = lower(trim(@Code))
+              LIMIT 1",
             new { Code = code }
         );
     }
