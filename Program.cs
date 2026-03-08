@@ -59,6 +59,13 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower;
     options.SerializerOptions.DictionaryKeyPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower;
     options.SerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+    options.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString;
+    options.SerializerOptions.Converters.Add(new FlexibleIntConverter());
+    options.SerializerOptions.Converters.Add(new FlexibleNullableIntConverter());
+    options.SerializerOptions.Converters.Add(new FlexibleDecimalConverter());
+    options.SerializerOptions.Converters.Add(new FlexibleNullableDecimalConverter());
+    options.SerializerOptions.Converters.Add(new FlexibleBoolConverter());
+    options.SerializerOptions.Converters.Add(new FlexibleNullableBoolConverter());
 });
 
 var app = builder.Build();
@@ -227,13 +234,14 @@ app.Use(async (context, next) =>
         captureBody.Position = 0;
         var upstreamBody = await new StreamReader(captureBody, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true).ReadToEndAsync();
         logger.LogWarning(
-            "Upload request returned 400 before completion. traceId={TraceId} path={Path} uploadKey={UploadKey} employeeId={EmployeeId} macAddress={MacAddress} upstreamBody={UpstreamBody}",
+            "Upload request returned 400 before completion. traceId={TraceId} path={Path} uploadKey={UploadKey} employeeId={EmployeeId} macAddress={MacAddress} upstreamBody={UpstreamBody} bodySnippet={BodySnippet}",
             traceId,
             context.Request.Path.Value,
             ApiHandlers.ExtractJsonStringField(bodySnippet, "upload_key"),
             ApiHandlers.ExtractJsonStringField(bodySnippet, "employee_id"),
             ApiHandlers.ExtractJsonStringField(bodySnippet, "mac_address"),
-            upstreamBody);
+            upstreamBody,
+            bodySnippet);
 
         context.Response.Body = originalBody;
         context.Response.Clear();
