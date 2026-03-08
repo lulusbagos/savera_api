@@ -60,6 +60,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.DictionaryKeyPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower;
     options.SerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     options.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString;
+    options.SerializerOptions.Converters.Add(new FlexibleStringConverter());
     options.SerializerOptions.Converters.Add(new FlexibleIntConverter());
     options.SerializerOptions.Converters.Add(new FlexibleNullableIntConverter());
     options.SerializerOptions.Converters.Add(new FlexibleDecimalConverter());
