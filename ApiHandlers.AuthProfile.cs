@@ -18,6 +18,58 @@ public static partial class ApiHandlers
         }, statusCode: statusCode);
     }
 
+    private static async Task<bool> ColumnExistsAsync(NpgsqlDataSource db, string schema, string table, string column)
+    {
+        return await db.ExecuteScalarAsync<bool>(@"
+SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = @Schema
+      AND table_name = @Table
+      AND column_name = @Column
+)", new
+        {
+            Schema = schema,
+            Table = table,
+            Column = column
+        });
+    }
+
+    private static async Task<List<LoginDiagnosticUserRow>> GetLoginDiagnosticUsersAsync(NpgsqlDataSource db, string[] candidates)
+    {
+        var hasLastLoginAt = await ColumnExistsAsync(db, "public", "tbl_m_user", "last_login_at");
+        var hasLastLogin = await ColumnExistsAsync(db, "public", "tbl_m_user", "last_login");
+        var hasAppVersion = await ColumnExistsAsync(db, "public", "tbl_m_user", "app_version");
+
+        var lastLoginAtSql = hasLastLoginAt ? "last_login_at" : "NULL::timestamp AS last_login_at";
+        var lastLoginSql = hasLastLogin ? "last_login" : "NULL::timestamp AS last_login";
+        var appVersionSql = hasAppVersion ? "app_version" : "NULL::varchar AS app_version";
+
+        var sql = $@"
+SELECT id,
+       company_id,
+       username,
+       email,
+       password,
+       role,
+       is_active,
+       deleted_at,
+       {lastLoginAtSql},
+       {lastLoginSql},
+       {appVersionSql}
+FROM public.tbl_m_user
+WHERE lower(username) = ANY(@Candidates)
+   OR lower(email) = ANY(@Candidates)
+ORDER BY id";
+
+        var rows = await db.QueryAsync<LoginDiagnosticUserRow>(sql, new
+        {
+            Candidates = candidates.Length == 0 ? new[] { string.Empty } : candidates
+        });
+
+        return rows.ToList();
+    }
+
     public static async Task<IResult> LoginAsync(
         HttpContext context,
         LoginRequest request,
@@ -200,25 +252,7 @@ VALUES
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        var users = (await db.QueryAsync<LoginDiagnosticUserRow>(@"
-SELECT id,
-       company_id,
-       username,
-       email,
-       password,
-       role,
-       is_active,
-       deleted_at,
-       last_login_at,
-       last_login,
-       app_version
-FROM public.tbl_m_user
-WHERE lower(username) = ANY(@Candidates)
-   OR lower(email) = ANY(@Candidates)
-ORDER BY id", new
-        {
-            Candidates = candidates.Length == 0 ? new[] { string.Empty } : candidates
-        })).ToList();
+        var users = await GetLoginDiagnosticUsersAsync(db, candidates);
 
         var userIds = users.Select(x => x.Id).Distinct().ToArray();
         var companyIds = users.Select(x => x.CompanyId).Distinct().ToArray();
