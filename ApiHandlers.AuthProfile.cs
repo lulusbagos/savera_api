@@ -727,7 +727,10 @@ LIMIT 1", new { auth.UserId, CompanyId = company.Id });
             return ErrorMessage(StatusCodes.Status404NotFound, "Company not found.");
         }
 
-        var rows = await db.QueryAsync<BannerRow>(@"
+        IEnumerable<BannerRow> rows;
+        try
+        {
+            rows = await db.QueryAsync<BannerRow>(@"
 SELECT image
 FROM public.tbl_m_banner
 WHERE deleted_at IS NULL
@@ -736,6 +739,12 @@ WHERE deleted_at IS NULL
   AND (valid_from IS NULL OR valid_from <= CURRENT_DATE)
   AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
 ORDER BY seq, id", new { CompanyId = company.Id });
+        }
+        catch (PostgresException ex) when (ex.SqlState == "42P01" || ex.SqlState == "42703")
+        {
+            // Banner table/columns are optional in some deployments.
+            return Results.Ok(Array.Empty<string>());
+        }
 
         var baseUrl = (options.Value.AdminImageBaseUrl ?? string.Empty).Trim();
         var normalizedBase = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
