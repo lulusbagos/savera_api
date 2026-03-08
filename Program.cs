@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using System.IO.Compression;
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Options;
@@ -143,6 +144,119 @@ app.Use(async (context, next) =>
     }
 
     await next();
+});
+
+app.Use(async (context, next) =>
+{
+    if (!ApiHandlers.IsUploadEndpoint(context.Request.Path))
+    {
+        await next();
+        return;
+    }
+
+    var traceId = ApiHandlers.EnsureTraceId(context);
+    var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("UploadBadRequest");
+    var bodySnippet = await ApiHandlers.ReadRequestBodySnippetAsync(context);
+    var originalBody = context.Response.Body;
+    await using var captureBody = new MemoryStream();
+    context.Response.Body = captureBody;
+
+    try
+    {
+        await next();
+    }
+    catch (BadHttpRequestException ex)
+    {
+        logger.LogWarning(ex,
+            "Upload request rejected before handler. traceId={TraceId} path={Path} uploadKey={UploadKey} employeeId={EmployeeId} macAddress={MacAddress}",
+            traceId,
+            context.Request.Path.Value,
+            ApiHandlers.ExtractJsonStringField(bodySnippet, "upload_key"),
+            ApiHandlers.ExtractJsonStringField(bodySnippet, "employee_id"),
+            ApiHandlers.ExtractJsonStringField(bodySnippet, "mac_address"));
+
+        context.Response.Body = originalBody;
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            message = "Bad request before upload handler",
+            detail = ex.Message,
+            hint = ApiHandlers.BuildUploadBadRequestHint(bodySnippet),
+            endpoint = context.Request.Path.Value,
+            upload_key = ApiHandlers.ExtractJsonStringField(bodySnippet, "upload_key"),
+            employee_id = ApiHandlers.ExtractJsonStringField(bodySnippet, "employee_id"),
+            mac_address = ApiHandlers.ExtractJsonStringField(bodySnippet, "mac_address"),
+            trace_id = traceId,
+            request_body_snippet = bodySnippet
+        });
+        return;
+    }
+    catch (System.Text.Json.JsonException ex)
+    {
+        logger.LogWarning(ex,
+            "Upload JSON rejected before handler. traceId={TraceId} path={Path} uploadKey={UploadKey} employeeId={EmployeeId} macAddress={MacAddress}",
+            traceId,
+            context.Request.Path.Value,
+            ApiHandlers.ExtractJsonStringField(bodySnippet, "upload_key"),
+            ApiHandlers.ExtractJsonStringField(bodySnippet, "employee_id"),
+            ApiHandlers.ExtractJsonStringField(bodySnippet, "mac_address"));
+
+        context.Response.Body = originalBody;
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            message = "Invalid JSON body for upload request",
+            detail = ex.Message,
+            hint = ApiHandlers.BuildUploadBadRequestHint(bodySnippet),
+            endpoint = context.Request.Path.Value,
+            upload_key = ApiHandlers.ExtractJsonStringField(bodySnippet, "upload_key"),
+            employee_id = ApiHandlers.ExtractJsonStringField(bodySnippet, "employee_id"),
+            mac_address = ApiHandlers.ExtractJsonStringField(bodySnippet, "mac_address"),
+            trace_id = traceId,
+            request_body_snippet = bodySnippet
+        });
+        return;
+    }
+
+    if (context.Response.StatusCode == StatusCodes.Status400BadRequest)
+    {
+        captureBody.Position = 0;
+        var upstreamBody = await new StreamReader(captureBody, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true).ReadToEndAsync();
+        logger.LogWarning(
+            "Upload request returned 400 before completion. traceId={TraceId} path={Path} uploadKey={UploadKey} employeeId={EmployeeId} macAddress={MacAddress} upstreamBody={UpstreamBody}",
+            traceId,
+            context.Request.Path.Value,
+            ApiHandlers.ExtractJsonStringField(bodySnippet, "upload_key"),
+            ApiHandlers.ExtractJsonStringField(bodySnippet, "employee_id"),
+            ApiHandlers.ExtractJsonStringField(bodySnippet, "mac_address"),
+            upstreamBody);
+
+        context.Response.Body = originalBody;
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            message = "Upload request rejected before handler",
+            detail = string.IsNullOrWhiteSpace(upstreamBody) ? null : upstreamBody,
+            hint = ApiHandlers.BuildUploadBadRequestHint(bodySnippet),
+            endpoint = context.Request.Path.Value,
+            upload_key = ApiHandlers.ExtractJsonStringField(bodySnippet, "upload_key"),
+            employee_id = ApiHandlers.ExtractJsonStringField(bodySnippet, "employee_id"),
+            mac_address = ApiHandlers.ExtractJsonStringField(bodySnippet, "mac_address"),
+            trace_id = traceId,
+            request_body_snippet = bodySnippet
+        });
+        return;
+    }
+
+    captureBody.Position = 0;
+    context.Response.Body = originalBody;
+    await captureBody.CopyToAsync(originalBody);
 });
 
 app.MapGet("/", () => Results.Ok(new { message = "Savera ASP.NET API Ready" }));

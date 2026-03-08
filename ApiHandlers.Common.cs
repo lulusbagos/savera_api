@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -132,6 +133,95 @@ public static partial class ApiHandlers
 
     public static IResult ErrorMessage(int statusCode, string message)
         => Results.Json(new { message }, statusCode: statusCode);
+
+    public static bool IsUploadEndpoint(PathString path)
+        => path.Equals("/api/summary", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/api/detail", StringComparison.OrdinalIgnoreCase);
+
+    public static async Task<string?> ReadRequestBodySnippetAsync(HttpContext context, int maxChars = 2048)
+    {
+        if (!context.Request.Body.CanSeek)
+        {
+            context.Request.EnableBuffering();
+        }
+
+        context.Request.Body.Position = 0;
+        using var reader = new StreamReader(context.Request.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+        var buffer = new char[Math.Max(128, maxChars)];
+        var read = await reader.ReadBlockAsync(buffer, 0, buffer.Length);
+        context.Request.Body.Position = 0;
+
+        if (read <= 0)
+        {
+            return null;
+        }
+
+        var snippet = new string(buffer, 0, read).Trim();
+        return string.IsNullOrWhiteSpace(snippet) ? null : snippet;
+    }
+
+    public static string? ExtractJsonStringField(string? json, string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(fieldName))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty(fieldName, out var value))
+            {
+                return null;
+            }
+
+            return value.ValueKind switch
+            {
+                JsonValueKind.String => value.GetString(),
+                JsonValueKind.Number => value.GetRawText(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                _ => value.GetRawText()
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static string? BuildUploadBadRequestHint(string? bodySnippet)
+    {
+        if (string.IsNullOrWhiteSpace(bodySnippet))
+        {
+            return "Request body empty or unreadable before model binding.";
+        }
+
+        var employeeId = ExtractJsonStringField(bodySnippet, "employee_id");
+        var macAddress = ExtractJsonStringField(bodySnippet, "mac_address");
+        var uploadKey = ExtractJsonStringField(bodySnippet, "upload_key");
+        var parts = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(uploadKey))
+        {
+            parts.Add("upload_key missing");
+        }
+        if (string.IsNullOrWhiteSpace(employeeId))
+        {
+            parts.Add("employee_id missing");
+        }
+        if (string.IsNullOrWhiteSpace(macAddress))
+        {
+            parts.Add("mac_address missing");
+        }
+
+        if (parts.Count == 0)
+        {
+            return "Check JSON types or malformed body; required upload fields were present in body snippet.";
+        }
+
+        return string.Join(", ", parts);
+    }
 
     public static async Task<AuthContext?> AuthenticateAsync(HttpContext context, NpgsqlDataSource db)
     {
