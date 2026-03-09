@@ -94,8 +94,8 @@ public static partial class ApiHandlers
         );
 
         logger.LogInformation(
-            "SUMMARY prepared traceId={TraceId} requestKey={RequestKey} recordDate={RecordDate} routeBase={RouteBase} retryCount={RetryCount}",
-            traceId, requestKey, recordDate, routeBase, retryCount);
+            "SUMMARY prepared traceId={TraceId} requestKey={RequestKey} recordDate={RecordDate} routeBase={RouteBase} retryCount={RetryCount} dbRawPayload={DbRawPayload}",
+            traceId, requestKey, recordDate, routeBase, retryCount, options.Value.StoreRawPayloadInSummaryDetail);
 
         int summaryId;
         try
@@ -118,7 +118,8 @@ public static partial class ApiHandlers
                     ComputeSha256($"{request.EmployeeId}|{request.DeviceTime}|{payload.Activity}|{payload.Sleep}|{payload.Stress}|{payload.Spo2}"),
                     "summary",
                     payload.Activity, payload.Sleep, payload.Stress, null, null, payload.Spo2,
-                    null, null, null, null, null, null, null, null, null
+                    null, null, null, null, null, null, null, null, null,
+                    options.Value.StoreRawPayloadInSummaryDetail
                 );
                 logger.LogInformation("SUMMARY upsert_detail_ok traceId={TraceId} uploadKey={UploadKey}", traceId, requestKey);
 
@@ -307,8 +308,8 @@ public static partial class ApiHandlers
         );
 
         logger.LogInformation(
-            "DETAIL prepared traceId={TraceId} requestKey={RequestKey} recordDate={RecordDate} routeBase={RouteBase} retryCount={RetryCount}",
-            traceId, requestKey, recordDate, routeBase, retryCount);
+            "DETAIL prepared traceId={TraceId} requestKey={RequestKey} recordDate={RecordDate} routeBase={RouteBase} retryCount={RetryCount} dbRawPayload={DbRawPayload}",
+            traceId, requestKey, recordDate, routeBase, retryCount, options.Value.StoreRawPayloadInSummaryDetail);
 
         int? summaryId;
         try
@@ -332,7 +333,8 @@ public static partial class ApiHandlers
                     "detail",
                     payload.Activity, payload.Sleep, payload.Stress, payload.RespiratoryRate, payload.Pai, payload.Spo2,
                     payload.Temperature, payload.Cycling, payload.Weight, payload.HeartRateMax, payload.HeartRateResting,
-                    payload.HeartRateManual, payload.HrvSummary, payload.HrvValue, payload.BodyEnergy
+                    payload.HeartRateManual, payload.HrvSummary, payload.HrvValue, payload.BodyEnergy,
+                    options.Value.StoreRawPayloadInSummaryDetail
                 );
                 logger.LogInformation("DETAIL upsert_detail_ok traceId={TraceId} uploadKey={UploadKey}", traceId, requestKey);
 

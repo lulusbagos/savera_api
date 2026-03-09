@@ -13,6 +13,7 @@ public sealed class AppOptions
     public int FileQueueMaxAttempts { get; set; } = 5;
     public int FileQueueBaseRetrySeconds { get; set; } = 2;
     public int FileQueueWorkerConcurrency { get; set; } = 4;
+    public bool StoreRawPayloadInSummaryDetail { get; set; } = false;
     public bool MaintenanceCleanupEnabled { get; set; } = true;
     public int MaintenanceRetentionDays { get; set; } = 30;
     public int MaintenanceIntervalMinutes { get; set; } = 60;

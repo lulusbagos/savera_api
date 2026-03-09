@@ -17,6 +17,16 @@ public static partial class ApiHandlers
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
+    private static string PrepareDbJsonPayload(string? value, bool storeRawPayload)
+    {
+        if (!storeRawPayload)
+        {
+            return "[]";
+        }
+
+        return NormalizeJsonPayload(value);
+    }
+
     private static int ToSafeInt(decimal? value)
     {
         if (!value.HasValue)
@@ -332,7 +342,8 @@ RETURNING id", new
         string? userHeartRateManual,
         string? userHrvSummary,
         string? userHrvValue,
-        string? userBodyEnergy)
+        string? userBodyEnergy,
+        bool storeRawPayload)
     {
         var existingId = await conn.QuerySingleOrDefaultAsync<long?>(
             "SELECT id FROM public.tbl_t_summary_detail WHERE upload_key=@UploadKey LIMIT 1",
@@ -355,21 +366,21 @@ RETURNING id", new
             AppVersion = appVersion,
             PayloadHash = payloadHash,
             Source = source,
-            UserActivity = userActivity,
-            UserSleep = userSleep,
-            UserStress = userStress,
-            UserRespiratoryRate = NormalizeJsonPayload(userRespiratoryRate),
-            UserPai = NormalizeJsonPayload(userPai),
-            UserSpo2 = userSpo2,
-            UserTemperature = NormalizeJsonPayload(userTemperature),
-            UserCycling = NormalizeJsonPayload(userCycling),
-            UserWeight = NormalizeJsonPayload(userWeight),
-            UserHeartRateMax = NormalizeJsonPayload(userHeartRateMax),
-            UserHeartRateResting = NormalizeJsonPayload(userHeartRateResting),
-            UserHeartRateManual = NormalizeJsonPayload(userHeartRateManual),
-            UserHrvSummary = NormalizeJsonPayload(userHrvSummary),
-            UserHrvValue = NormalizeJsonPayload(userHrvValue),
-            UserBodyEnergy = NormalizeJsonPayload(userBodyEnergy)
+            UserActivity = PrepareDbJsonPayload(userActivity, storeRawPayload),
+            UserSleep = PrepareDbJsonPayload(userSleep, storeRawPayload),
+            UserStress = PrepareDbJsonPayload(userStress, storeRawPayload),
+            UserRespiratoryRate = PrepareDbJsonPayload(userRespiratoryRate, storeRawPayload),
+            UserPai = PrepareDbJsonPayload(userPai, storeRawPayload),
+            UserSpo2 = PrepareDbJsonPayload(userSpo2, storeRawPayload),
+            UserTemperature = PrepareDbJsonPayload(userTemperature, storeRawPayload),
+            UserCycling = PrepareDbJsonPayload(userCycling, storeRawPayload),
+            UserWeight = PrepareDbJsonPayload(userWeight, storeRawPayload),
+            UserHeartRateMax = PrepareDbJsonPayload(userHeartRateMax, storeRawPayload),
+            UserHeartRateResting = PrepareDbJsonPayload(userHeartRateResting, storeRawPayload),
+            UserHeartRateManual = PrepareDbJsonPayload(userHeartRateManual, storeRawPayload),
+            UserHrvSummary = PrepareDbJsonPayload(userHrvSummary, storeRawPayload),
+            UserHrvValue = PrepareDbJsonPayload(userHrvValue, storeRawPayload),
+            UserBodyEnergy = PrepareDbJsonPayload(userBodyEnergy, storeRawPayload)
         };
 
         if (existingId.HasValue)
