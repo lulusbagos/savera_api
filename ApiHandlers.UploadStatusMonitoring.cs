@@ -1,4 +1,5 @@
 using Dapper;
+using Microsoft.Extensions.Options;
 using Npgsql;
 using SaveraApi.Infrastructure;
 
@@ -167,7 +168,7 @@ FROM monitoring.v_summary_detail_gap_today")).ToList();
         }
     }
 
-    public static async Task<IResult> AdminUploadFailuresAsync(HttpContext context, NpgsqlDataSource db)
+    public static async Task<IResult> AdminUploadFailuresAsync(HttpContext context, NpgsqlDataSource db, IOptions<AppOptions> options)
     {
         var auth = await AuthenticateAsync(context, db);
         if (auth is null)
@@ -180,23 +181,66 @@ FROM monitoring.v_summary_detail_gap_today")).ToList();
         }
 
         var limit = ParseLimit(context, "limit", 50, 10, 500);
+        var uploadKey = (context.Request.Query["upload_key"].FirstOrDefault() ?? string.Empty).Trim();
+        var employeeIdFilter = int.TryParse(context.Request.Query["employee_id"].FirstOrDefault(), out var employeeIdValue)
+            ? employeeIdValue
+            : (int?)null;
 
-        var recentFailures = (await db.QueryAsync<dynamic>(@"
+        var recentFailuresSql = @"
 SELECT id, trace_id, request_type, endpoint, request_key, status_code,
        error_type, error_message, note, route_base, route_url, company_id,
        department_id, employee_id, device_id, mac_address, created_at
 FROM public.tbl_t_upload_log
-WHERE status_code >= 400
-ORDER BY id DESC
-LIMIT @Limit", new { Limit = limit })).ToList();
+WHERE status_code >= 400";
 
-        var queueFailed = (await db.QueryAsync<dynamic>(@"
+        if (!string.IsNullOrWhiteSpace(uploadKey))
+        {
+            recentFailuresSql += " AND request_key=@UploadKey";
+        }
+        if (employeeIdFilter.HasValue)
+        {
+            recentFailuresSql += " AND employee_id=@EmployeeId";
+        }
+        recentFailuresSql += " ORDER BY id DESC LIMIT @Limit";
+
+        var recentFailures = (await db.QueryAsync<dynamic>(recentFailuresSql, new
+        {
+            Limit = limit,
+            UploadKey = uploadKey,
+            EmployeeId = employeeIdFilter
+        })).ToList();
+
+        var allQueueSql = @"
 SELECT id, request_type, request_key, employee_id, record_date,
        relative_path, status, attempts, max_attempts, next_retry_at, last_error, updated_at
 FROM public.tbl_t_upload_file_queue
-WHERE status = 'failed'
-ORDER BY updated_at DESC, id DESC
-LIMIT @Limit", new { Limit = limit })).ToList();
+WHERE status IN ('pending', 'processing', 'failed')";
+
+        if (!string.IsNullOrWhiteSpace(uploadKey))
+        {
+            allQueueSql += " AND request_key=@UploadKey";
+        }
+        if (employeeIdFilter.HasValue)
+        {
+            allQueueSql += " AND employee_id=@EmployeeId";
+        }
+        allQueueSql += " ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT @Limit";
+
+        var queueRows = (await db.QueryAsync<dynamic>(allQueueSql, new
+        {
+            Limit = limit,
+            UploadKey = uploadKey,
+            EmployeeId = employeeIdFilter
+        })).ToList();
+
+        var queueFailed = queueRows.Where(x => string.Equals((string?)x.status, "failed", StringComparison.OrdinalIgnoreCase)).ToList();
+        var queuePending = queueRows.Where(x => string.Equals((string?)x.status, "pending", StringComparison.OrdinalIgnoreCase)).ToList();
+        var queueProcessing = queueRows.Where(x => string.Equals((string?)x.status, "processing", StringComparison.OrdinalIgnoreCase)).ToList();
+
+        var uploadRoot = string.IsNullOrWhiteSpace(options.Value.UploadRoot) ? AppContext.BaseDirectory : options.Value.UploadRoot;
+        var uploadRootExists = Directory.Exists(uploadRoot);
+        var folderSummary = BuildUploadFolderSummary(uploadRoot);
+        var fallbackFiles = FindFallbackFiles(uploadRoot, uploadKey, employeeIdFilter, limit);
 
         return Results.Ok(new
         {
@@ -204,8 +248,22 @@ LIMIT @Limit", new { Limit = limit })).ToList();
             generated_at = DateTimeOffset.Now,
             data = new
             {
+                filters = new
+                {
+                    upload_key = string.IsNullOrWhiteSpace(uploadKey) ? null : uploadKey,
+                    employee_id = employeeIdFilter
+                },
+                upload_root = new
+                {
+                    path = uploadRoot,
+                    exists = uploadRootExists
+                },
+                upload_folder_summary = folderSummary,
                 upload_log_failures = recentFailures,
-                file_queue_failed = queueFailed
+                file_queue_failed = queueFailed,
+                file_queue_pending = queuePending,
+                file_queue_processing = queueProcessing,
+                fallback_files = fallbackFiles
             }
         });
     }
@@ -227,6 +285,97 @@ LIMIT @Limit", new { Limit = limit })).ToList();
             return max;
         }
         return parsed;
+    }
+
+    private static object BuildUploadFolderSummary(string uploadRoot)
+    {
+        if (!Directory.Exists(uploadRoot))
+        {
+            return new
+            {
+                exists = false,
+                directories = Array.Empty<object>()
+            };
+        }
+
+        var names = new[]
+        {
+            "data_activity",
+            "data_sleep",
+            "data_stress",
+            "data_spo2",
+            "data_heart_rate_max",
+            "data_heart_rate_resting",
+            "data_heart_rate_manual",
+            "failed_uploads"
+        };
+
+        var directories = names.Select(name =>
+        {
+            var fullPath = Path.Combine(uploadRoot, name);
+            var exists = Directory.Exists(fullPath);
+            var latest = exists
+                ? Directory.EnumerateFiles(fullPath, "*", SearchOption.AllDirectories)
+                    .Select(path => new FileInfo(path))
+                    .OrderByDescending(file => file.LastWriteTimeUtc)
+                    .FirstOrDefault()
+                : null;
+
+            return new
+            {
+                name,
+                path = fullPath,
+                exists,
+                latest_file = latest?.FullName,
+                latest_file_at = latest?.LastWriteTime
+            };
+        }).ToList();
+
+        return new
+        {
+            exists = true,
+            directories
+        };
+    }
+
+    private static List<object> FindFallbackFiles(string uploadRoot, string uploadKey, int? employeeId, int limit)
+    {
+        var failedRoot = Path.Combine(uploadRoot, "failed_uploads");
+        if (!Directory.Exists(failedRoot))
+        {
+            return new List<object>();
+        }
+
+        IEnumerable<string> files = Directory.EnumerateFiles(failedRoot, "*.json", SearchOption.AllDirectories);
+
+        if (employeeId.HasValue)
+        {
+            var employeeToken = $"employee_{employeeId.Value}";
+            files = files.Where(path => path.Contains(employeeToken, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(uploadKey))
+        {
+            var safeKey = uploadKey
+                .Replace('\\', '_')
+                .Replace('/', '_')
+                .Replace(':', '_')
+                .Replace('|', '_');
+            files = files.Where(path => Path.GetFileName(path).Contains(safeKey, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return files
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .Take(limit)
+            .Select(file => (object)new
+            {
+                path = file.FullName,
+                name = file.Name,
+                size = file.Length,
+                updated_at = file.LastWriteTime
+            })
+            .ToList();
     }
 }
 
