@@ -71,23 +71,18 @@ public static partial class ApiHandlers
         }
     }
 
-    public static string BuildMetricRelativePath(string metric, DateOnly date, int employeeId, string requestKey)
+    public static string BuildMetricRelativePath(string metric, DateOnly date, int employeeId, string source)
     {
         var safeMetric = SanitizePathPart(metric);
-        var safeKey = SanitizePathPart(requestKey);
-
         var paddedEmployee = employeeId <= 0 ? "00000000" : employeeId.ToString("D8", CultureInfo.InvariantCulture);
-        var shardA = paddedEmployee[..2];
-        var shardB = paddedEmployee[2..4];
+        var safeSource = string.IsNullOrWhiteSpace(source) ? "data" : SanitizePathPart(source).ToLowerInvariant();
 
         return Path.Combine(
             safeMetric,
             date.Year.ToString("D4", CultureInfo.InvariantCulture),
             date.Month.ToString("D2", CultureInfo.InvariantCulture),
             date.Day.ToString("D2", CultureInfo.InvariantCulture),
-            shardA,
-            shardB,
-            $"{paddedEmployee}_{safeKey}.json"
+            $"{paddedEmployee}_{safeSource}.json"
         );
     }
 

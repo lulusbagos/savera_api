@@ -271,10 +271,10 @@ public static partial class ApiHandlers
     {
         var tasks = new[]
         {
-            new UploadFileTask(BuildMetricRelativePath("data_activity", recordDate, employeeId, requestKey), activity, "summary", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_sleep", recordDate, employeeId, requestKey), sleep, "summary", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_stress", recordDate, employeeId, requestKey), stress, "summary", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_spo2", recordDate, employeeId, requestKey), spo2, "summary", requestKey, employeeId, recordDate)
+            new UploadFileTask(BuildMetricRelativePath("data_activity", recordDate, employeeId, "summary"), activity, "summary", requestKey, employeeId, recordDate),
+            new UploadFileTask(BuildMetricRelativePath("data_sleep", recordDate, employeeId, "summary"), sleep, "summary", requestKey, employeeId, recordDate),
+            new UploadFileTask(BuildMetricRelativePath("data_stress", recordDate, employeeId, "summary"), stress, "summary", requestKey, employeeId, recordDate),
+            new UploadFileTask(BuildMetricRelativePath("data_spo2", recordDate, employeeId, "summary"), spo2, "summary", requestKey, employeeId, recordDate)
         };
 
         foreach (var item in tasks)
@@ -360,13 +360,13 @@ public static partial class ApiHandlers
     {
         var tasks = new[]
         {
-            new UploadFileTask(BuildMetricRelativePath("data_activity", recordDate, employeeId, requestKey), payload.Activity, "detail", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_sleep", recordDate, employeeId, requestKey), payload.Sleep, "detail", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_stress", recordDate, employeeId, requestKey), payload.Stress, "detail", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_spo2", recordDate, employeeId, requestKey), payload.Spo2, "detail", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_heart_rate_max", recordDate, employeeId, requestKey), payload.HeartRateMax, "detail", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_heart_rate_resting", recordDate, employeeId, requestKey), payload.HeartRateResting, "detail", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_heart_rate_manual", recordDate, employeeId, requestKey), payload.HeartRateManual, "detail", requestKey, employeeId, recordDate)
+            new UploadFileTask(BuildMetricRelativePath("data_activity", recordDate, employeeId, "detail"), payload.Activity, "detail", requestKey, employeeId, recordDate),
+            new UploadFileTask(BuildMetricRelativePath("data_sleep", recordDate, employeeId, "detail"), payload.Sleep, "detail", requestKey, employeeId, recordDate),
+            new UploadFileTask(BuildMetricRelativePath("data_stress", recordDate, employeeId, "detail"), payload.Stress, "detail", requestKey, employeeId, recordDate),
+            new UploadFileTask(BuildMetricRelativePath("data_spo2", recordDate, employeeId, "detail"), payload.Spo2, "detail", requestKey, employeeId, recordDate),
+            new UploadFileTask(BuildMetricRelativePath("data_heart_rate_max", recordDate, employeeId, "detail"), payload.HeartRateMax, "detail", requestKey, employeeId, recordDate),
+            new UploadFileTask(BuildMetricRelativePath("data_heart_rate_resting", recordDate, employeeId, "detail"), payload.HeartRateResting, "detail", requestKey, employeeId, recordDate),
+            new UploadFileTask(BuildMetricRelativePath("data_heart_rate_manual", recordDate, employeeId, "detail"), payload.HeartRateManual, "detail", requestKey, employeeId, recordDate)
         };
 
         foreach (var item in tasks)

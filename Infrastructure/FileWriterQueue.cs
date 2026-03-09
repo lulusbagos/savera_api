@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Dapper;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -257,12 +258,19 @@ RETURNING q.id,
                 task.RequestKey,
                 fullPath);
 
-            await File.WriteAllTextAsync(
-                fullPath,
-                task.Content,
-                new UTF8Encoding(false),
-                cancellationToken
-            );
+            if (string.Equals(task.RequestType, "detail", StringComparison.OrdinalIgnoreCase))
+            {
+                await MergeJsonArrayFileAsync(fullPath, task.Content, cancellationToken);
+            }
+            else
+            {
+                await File.WriteAllTextAsync(
+                    fullPath,
+                    task.Content,
+                    new UTF8Encoding(false),
+                    cancellationToken
+                );
+            }
 
             await MarkDoneAsync(task.Id, cancellationToken);
             Interlocked.Increment(ref _successWriteCount);
@@ -362,5 +370,63 @@ WHERE id=@Id";
             task.Attempts,
             retrySeconds,
             safeError);
+    }
+
+    private static async Task MergeJsonArrayFileAsync(string fullPath, string incomingContent, CancellationToken cancellationToken)
+    {
+        var normalizedIncoming = NormalizeJsonArray(incomingContent);
+        if (!File.Exists(fullPath))
+        {
+            await File.WriteAllTextAsync(fullPath, normalizedIncoming, new UTF8Encoding(false), cancellationToken);
+            return;
+        }
+
+        var existingContent = await File.ReadAllTextAsync(fullPath, cancellationToken);
+        var merged = MergeJsonArrays(existingContent, normalizedIncoming);
+        await File.WriteAllTextAsync(fullPath, merged, new UTF8Encoding(false), cancellationToken);
+    }
+
+    private static string NormalizeJsonArray(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return "[]";
+        }
+
+        var trimmed = content.Trim();
+        try
+        {
+            using var doc = JsonDocument.Parse(trimmed);
+            return doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.GetRawText() : "[]";
+        }
+        catch
+        {
+            return "[]";
+        }
+    }
+
+    private static string MergeJsonArrays(string existingContent, string incomingContent)
+    {
+        var items = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        AddArrayItems(existingContent, items, seen);
+        AddArrayItems(incomingContent, items, seen);
+
+        return "[" + string.Join(",", items) + "]";
+    }
+
+    private static void AddArrayItems(string content, List<string> items, HashSet<string> seen)
+    {
+        var normalized = NormalizeJsonArray(content);
+        using var doc = JsonDocument.Parse(normalized);
+        foreach (var element in doc.RootElement.EnumerateArray())
+        {
+            var raw = element.GetRawText();
+            if (seen.Add(raw))
+            {
+                items.Add(raw);
+            }
+        }
     }
 }
