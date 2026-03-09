@@ -1,7 +1,10 @@
 using System.Globalization;
 using System.Net.Sockets;
+using System.IO;
+using System.Text;
 using System.Text.Json;
 using Dapper;
+using Microsoft.Extensions.Options;
 using Npgsql;
 using SaveraApi.Infrastructure;
 
@@ -278,6 +281,73 @@ public static partial class ApiHandlers
         {
             await queue.EnqueueAsync(item, cancellationToken);
         }
+    }
+
+    private static async Task PersistFailedUploadPayloadAsync(
+        IOptions<AppOptions> options,
+        ILogger logger,
+        string requestType,
+        string requestKey,
+        int employeeId,
+        DateOnly recordDate,
+        object payload,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var root = string.IsNullOrWhiteSpace(options.Value.UploadRoot)
+                ? AppContext.BaseDirectory
+                : options.Value.UploadRoot;
+            var safeRequestType = SanitizeFileNameSegment(requestType, "unknown");
+            var safeKey = SanitizeFileNameSegment(requestKey, Guid.NewGuid().ToString("N"));
+            var relativeDir = Path.Combine(
+                "failed_uploads",
+                safeRequestType,
+                recordDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                $"employee_{Math.Max(0, employeeId)}");
+            var fullDir = Path.Combine(root, relativeDir);
+            Directory.CreateDirectory(fullDir);
+
+            var fullPath = Path.Combine(fullDir, safeKey + ".json");
+            var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+                DictionaryKeyPolicy = JsonNamingPolicy.SnakeCaseLower,
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+                WriteIndented = true
+            });
+
+            await File.WriteAllTextAsync(fullPath, json, new UTF8Encoding(false), cancellationToken);
+            logger.LogWarning(
+                "Stored failed upload payload. type={RequestType} key={RequestKey} employeeId={EmployeeId} path={FullPath}",
+                requestType, requestKey, employeeId, fullPath);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Failed to persist fallback upload payload. type={RequestType} key={RequestKey} employeeId={EmployeeId}",
+                requestType, requestKey, employeeId);
+        }
+    }
+
+    private static string SanitizeFileNameSegment(string? value, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return fallback;
+        }
+
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = value.Trim()
+            .Select(ch => invalid.Contains(ch) || ch == Path.DirectorySeparatorChar || ch == Path.AltDirectorySeparatorChar ? '_' : ch)
+            .ToArray();
+        var sanitized = new string(chars).Trim();
+        if (string.IsNullOrWhiteSpace(sanitized))
+        {
+            return fallback;
+        }
+
+        return sanitized.Length <= 120 ? sanitized : sanitized[..120];
     }
 
     private static async Task EnqueueDetailFiles(

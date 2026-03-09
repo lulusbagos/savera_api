@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using Npgsql;
 using SaveraApi.Infrastructure;
 
@@ -13,7 +14,8 @@ public static partial class ApiHandlers
         SummaryRequest request,
         NpgsqlDataSource db,
         FileWriterQueue fileQueue,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IOptions<AppOptions> options)
     {
         var traceId = EnsureTraceId(context);
         var watch = Stopwatch.StartNew();
@@ -131,6 +133,15 @@ public static partial class ApiHandlers
             watch.Stop();
             logger.LogError(ex, "SUMMARY failed traceId={TraceId} step={Step} requestKey={RequestKey} companyId={CompanyId} employeeId={EmployeeId} deviceId={DeviceId}",
                 traceId, currentStep, requestKey, companyId, employee.Id, device.Id);
+            await PersistFailedUploadPayloadAsync(
+                options,
+                logger,
+                "summary",
+                requestKey,
+                employee.Id,
+                recordDate,
+                request,
+                CancellationToken.None);
             var wasCancelled = context.RequestAborted.IsCancellationRequested;
             var statusCode = wasCancelled ? 499 : StatusCodes.Status500InternalServerError;
             await SafeInsertLogAsync(db, BuildUploadLog(
@@ -212,7 +223,8 @@ public static partial class ApiHandlers
         DetailRequest request,
         NpgsqlDataSource db,
         FileWriterQueue fileQueue,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IOptions<AppOptions> options)
     {
         var traceId = EnsureTraceId(context);
         var watch = Stopwatch.StartNew();
@@ -329,6 +341,15 @@ public static partial class ApiHandlers
             watch.Stop();
             logger.LogError(ex, "DETAIL failed traceId={TraceId} step={Step} requestKey={RequestKey} companyId={CompanyId} employeeId={EmployeeId} deviceId={DeviceId}",
                 traceId, currentStep, requestKey, companyId, employee.Id, device.Id);
+            await PersistFailedUploadPayloadAsync(
+                options,
+                logger,
+                "detail",
+                requestKey,
+                employee.Id,
+                recordDate,
+                request,
+                CancellationToken.None);
             var wasCancelled = context.RequestAborted.IsCancellationRequested;
             var statusCode = wasCancelled ? 499 : StatusCodes.Status500InternalServerError;
             await SafeInsertLogAsync(db, BuildUploadLog(
