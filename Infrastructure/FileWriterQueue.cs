@@ -84,6 +84,13 @@ DO UPDATE SET
         });
 
         Interlocked.Increment(ref _enqueuedCount);
+        _logger.LogInformation(
+            "FILEQUEUE enqueue type={RequestType} key={RequestKey} employeeId={EmployeeId} relativePath={RelativePath} uploadRoot={UploadRoot}",
+            task.RequestType,
+            task.RequestKey,
+            task.EmployeeId,
+            task.RelativePath,
+            _options.UploadRoot);
     }
 
     public async Task<object> SnapshotAsync()
@@ -124,6 +131,11 @@ GROUP BY status";
     {
         Directory.CreateDirectory(_options.UploadRoot);
         EnsureBaseUploadDirectories();
+        _logger.LogInformation(
+            "FILEQUEUE service_started uploadRoot={UploadRoot} workerConcurrency={WorkerConcurrency} pollMs={PollMs}",
+            _options.UploadRoot,
+            _workerConcurrency,
+            (int)_pollInterval.TotalMilliseconds);
 
         var workers = Enumerable.Range(1, _workerConcurrency)
             .Select(workerNo => RunWorkerLoopAsync(workerNo, stoppingToken))
@@ -156,6 +168,7 @@ GROUP BY status";
 
     private async Task RunWorkerLoopAsync(int workerNo, CancellationToken stoppingToken)
     {
+        _logger.LogInformation("FILEQUEUE worker_started worker={WorkerNo} uploadRoot={UploadRoot}", workerNo, _options.UploadRoot);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -210,7 +223,20 @@ RETURNING q.id,
           q.max_attempts";
 
         await using var conn = await _db.OpenConnectionAsync(cancellationToken);
-        return await conn.QuerySingleOrDefaultAsync<UploadFileQueueRow>(sql);
+        var row = await conn.QuerySingleOrDefaultAsync<UploadFileQueueRow>(sql);
+        if (row is not null)
+        {
+            _logger.LogInformation(
+                "FILEQUEUE dequeue id={Id} type={RequestType} key={RequestKey} employeeId={EmployeeId} relativePath={RelativePath} attempts={Attempts}",
+                row.Id,
+                row.RequestType,
+                row.RequestKey,
+                row.EmployeeId,
+                row.RelativePath,
+                row.Attempts);
+        }
+
+        return row;
     }
 
     private async Task ProcessQueueItemAsync(UploadFileQueueRow task, CancellationToken cancellationToken)
@@ -224,6 +250,13 @@ RETURNING q.id,
                 Directory.CreateDirectory(directory);
             }
 
+            _logger.LogInformation(
+                "FILEQUEUE write_start id={Id} type={RequestType} key={RequestKey} fullPath={FullPath}",
+                task.Id,
+                task.RequestType,
+                task.RequestKey,
+                fullPath);
+
             await File.WriteAllTextAsync(
                 fullPath,
                 task.Content,
@@ -234,6 +267,12 @@ RETURNING q.id,
             await MarkDoneAsync(task.Id, cancellationToken);
             Interlocked.Increment(ref _successWriteCount);
             _lastSuccessWriteAt = DateTimeOffset.Now;
+            _logger.LogInformation(
+                "FILEQUEUE write_success id={Id} type={RequestType} key={RequestKey} fullPath={FullPath}",
+                task.Id,
+                task.RequestType,
+                task.RequestKey,
+                fullPath);
         }
         catch (Exception ex)
         {
@@ -288,6 +327,13 @@ WHERE id=@Id";
                 Id = task.Id,
                 LastError = safeError
             });
+            _logger.LogError(
+                "FILEQUEUE marked_failed id={Id} type={RequestType} key={RequestKey} attempts={Attempts} error={Error}",
+                task.Id,
+                task.RequestType,
+                task.RequestKey,
+                task.Attempts,
+                safeError);
             return;
         }
 
@@ -308,5 +354,13 @@ WHERE id=@Id";
             RetrySeconds = retrySeconds,
             LastError = safeError
         });
+        _logger.LogWarning(
+            "FILEQUEUE retry_scheduled id={Id} type={RequestType} key={RequestKey} attempts={Attempts} retrySeconds={RetrySeconds} error={Error}",
+            task.Id,
+            task.RequestType,
+            task.RequestKey,
+            task.Attempts,
+            retrySeconds,
+            safeError);
     }
 }
