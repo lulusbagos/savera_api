@@ -53,6 +53,7 @@ builder.Services.AddSingleton(sp =>
 
 builder.Services.AddSingleton<FileWriterQueue>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<FileWriterQueue>());
+builder.Services.AddHostedService<MaintenanceCleanupService>();
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {

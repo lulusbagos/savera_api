@@ -161,6 +161,7 @@ public static partial class ApiHandlers
 
         var sideEffectWarnings = new List<string>();
         currentStep = "sideeffect_enqueue";
+        logger.LogInformation("SUMMARY sideeffect_enqueue_start traceId={TraceId} requestKey={RequestKey}", traceId, requestKey);
         await TrySideEffectAsync(
             async () => await EnqueueSummaryFiles(fileQueue, CancellationToken.None, employee.Id, requestKey, recordDate, payload.Activity, payload.Sleep, payload.Stress, payload.Spo2),
             ex => sideEffectWarnings.Add("enqueue:" + ex.GetType().Name),
@@ -171,7 +172,9 @@ public static partial class ApiHandlers
                 net.Transport, net.Quality, net.IsApiReachable, net.IsApiSlow, null
             ))
         );
+        logger.LogInformation("SUMMARY sideeffect_enqueue_done traceId={TraceId} requestKey={RequestKey} warnings={Warnings}", traceId, requestKey, sideEffectWarnings.Count);
         currentStep = "sideeffect_network_probe";
+        logger.LogInformation("SUMMARY sideeffect_network_start traceId={TraceId} requestKey={RequestKey}", traceId, requestKey);
         await TrySideEffectAsync(
             async () => await MaybeInsertNetworkProbeAsync(db, companyId, employee.Id, device.Id, request.MacAddress, request.AppVersion, net, traceId),
             ex => sideEffectWarnings.Add("network_probe:" + ex.GetType().Name),
@@ -182,7 +185,9 @@ public static partial class ApiHandlers
                 net.Transport, net.Quality, net.IsApiReachable, net.IsApiSlow, null
             ))
         );
+        logger.LogInformation("SUMMARY sideeffect_network_done traceId={TraceId} requestKey={RequestKey} warnings={Warnings}", traceId, requestKey, sideEffectWarnings.Count);
         currentStep = "sideeffect_google_activity";
+        logger.LogInformation("SUMMARY sideeffect_google_start traceId={TraceId} requestKey={RequestKey}", traceId, requestKey);
         await TrySideEffectAsync(
             async () => await MaybeInsertGoogleActivityFromExtraAsync(db, companyId, employee.Id, device.Id, "summary", request.Extra),
             ex => sideEffectWarnings.Add("google_activity:" + ex.GetType().Name),
@@ -193,6 +198,7 @@ public static partial class ApiHandlers
                 net.Transport, net.Quality, net.IsApiReachable, net.IsApiSlow, null
             ))
         );
+        logger.LogInformation("SUMMARY sideeffect_google_done traceId={TraceId} requestKey={RequestKey} warnings={Warnings}", traceId, requestKey, sideEffectWarnings.Count);
 
         watch.Stop();
         await SafeInsertLogAsync(db, BuildUploadLog(
@@ -368,6 +374,7 @@ public static partial class ApiHandlers
 
         var sideEffectWarnings = new List<string>();
         currentStep = "sideeffect_enqueue";
+        logger.LogInformation("DETAIL sideeffect_enqueue_start traceId={TraceId} requestKey={RequestKey}", traceId, requestKey);
         await TrySideEffectAsync(
             async () => await EnqueueDetailFiles(fileQueue, CancellationToken.None, employee.Id, requestKey, recordDate, payload),
             ex => sideEffectWarnings.Add("enqueue:" + ex.GetType().Name),
@@ -378,7 +385,9 @@ public static partial class ApiHandlers
                 net.Transport, net.Quality, net.IsApiReachable, net.IsApiSlow, null
             ))
         );
+        logger.LogInformation("DETAIL sideeffect_enqueue_done traceId={TraceId} requestKey={RequestKey} warnings={Warnings}", traceId, requestKey, sideEffectWarnings.Count);
         currentStep = "sideeffect_network_probe";
+        logger.LogInformation("DETAIL sideeffect_network_start traceId={TraceId} requestKey={RequestKey}", traceId, requestKey);
         await TrySideEffectAsync(
             async () => await MaybeInsertNetworkProbeAsync(db, companyId, employee.Id, device.Id, request.MacAddress, request.AppVersion, net, traceId),
             ex => sideEffectWarnings.Add("network_probe:" + ex.GetType().Name),
@@ -389,7 +398,9 @@ public static partial class ApiHandlers
                 net.Transport, net.Quality, net.IsApiReachable, net.IsApiSlow, null
             ))
         );
+        logger.LogInformation("DETAIL sideeffect_network_done traceId={TraceId} requestKey={RequestKey} warnings={Warnings}", traceId, requestKey, sideEffectWarnings.Count);
         currentStep = "sideeffect_google_activity";
+        logger.LogInformation("DETAIL sideeffect_google_start traceId={TraceId} requestKey={RequestKey}", traceId, requestKey);
         await TrySideEffectAsync(
             async () => await MaybeInsertGoogleActivityFromExtraAsync(db, companyId, employee.Id, device.Id, "detail", request.Extra),
             ex => sideEffectWarnings.Add("google_activity:" + ex.GetType().Name),
@@ -400,6 +411,7 @@ public static partial class ApiHandlers
                 net.Transport, net.Quality, net.IsApiReachable, net.IsApiSlow, null
             ))
         );
+        logger.LogInformation("DETAIL sideeffect_google_done traceId={TraceId} requestKey={RequestKey} warnings={Warnings}", traceId, requestKey, sideEffectWarnings.Count);
 
         watch.Stop();
         await SafeInsertLogAsync(db, BuildUploadLog(

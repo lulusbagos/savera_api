@@ -2,7 +2,7 @@ namespace SaveraApi.Infrastructure;
 
 public sealed class AppOptions
 {
-    public string UploadRoot { get; set; } = @"D:\4. PROJECT\6. Android\API\file savera\storage\app";
+    public string UploadRoot { get; set; } = @"E:\apps\FileSavera";
     public string AdminImageBaseUrl { get; set; } = "https://adminsavera.indexim.id/image/";
     public int TokenLifetimeHours { get; set; } = 168;
     public long MaxRequestBodyBytes { get; set; } = 5 * 1024 * 1024;
@@ -13,5 +13,8 @@ public sealed class AppOptions
     public int FileQueueMaxAttempts { get; set; } = 5;
     public int FileQueueBaseRetrySeconds { get; set; } = 2;
     public int FileQueueWorkerConcurrency { get; set; } = 4;
+    public bool MaintenanceCleanupEnabled { get; set; } = true;
+    public int MaintenanceRetentionDays { get; set; } = 30;
+    public int MaintenanceIntervalMinutes { get; set; } = 60;
     public string? PasswordDecryptKey { get; set; }
 }
