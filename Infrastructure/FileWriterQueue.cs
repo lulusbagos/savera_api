@@ -123,12 +123,35 @@ GROUP BY status";
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         Directory.CreateDirectory(_options.UploadRoot);
+        EnsureBaseUploadDirectories();
 
         var workers = Enumerable.Range(1, _workerConcurrency)
             .Select(workerNo => RunWorkerLoopAsync(workerNo, stoppingToken))
             .ToArray();
 
         await Task.WhenAll(workers);
+    }
+
+    private void EnsureBaseUploadDirectories()
+    {
+        var baseDirs = new[]
+        {
+            "data_activity",
+            "data_sleep",
+            "data_stress",
+            "data_spo2",
+            "data_heart_rate_max",
+            "data_heart_rate_resting",
+            "data_heart_rate_manual",
+            "failed_uploads"
+        };
+
+        foreach (var dir in baseDirs)
+        {
+            Directory.CreateDirectory(Path.Combine(_options.UploadRoot, dir));
+        }
+
+        _logger.LogInformation("Upload directories ensured at root={UploadRoot}", _options.UploadRoot);
     }
 
     private async Task RunWorkerLoopAsync(int workerNo, CancellationToken stoppingToken)
