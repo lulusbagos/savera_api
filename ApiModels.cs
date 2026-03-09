@@ -73,6 +73,7 @@ public sealed class SummaryRequest
     public string? DeviceTime { get; set; }
     public string? MacAddress { get; set; }
     public string? AppVersion { get; set; }
+    public int? CompanyId { get; set; }
     public int? DeviceId { get; set; }
     public int EmployeeId { get; set; }
     public int DepartmentId { get; set; }

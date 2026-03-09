@@ -149,6 +149,7 @@ GROUP BY status";
     {
         var baseDirs = new[]
         {
+            "data_summary",
             "data_activity",
             "data_sleep",
             "data_stress",

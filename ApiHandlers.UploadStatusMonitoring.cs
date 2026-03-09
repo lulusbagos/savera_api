@@ -300,6 +300,7 @@ WHERE status IN ('pending', 'processing', 'failed')";
 
         var names = new[]
         {
+            "data_summary",
             "data_activity",
             "data_sleep",
             "data_stress",

@@ -12,7 +12,7 @@ namespace SaveraApi;
 
 public static partial class ApiHandlers
 {
-    private sealed record SummaryPayload(string Activity, string Sleep, string Stress, string Spo2);
+    private sealed record SummaryPayload(string Sleep, string SummaryFile);
 
     private sealed record DetailPayload(
         string Activity,
@@ -46,10 +46,8 @@ public static partial class ApiHandlers
 
     private static SummaryPayload NormalizeSummaryPayload(SummaryRequest request)
         => new(
-            NormalizeJsonPayload(request.UserActivity),
-            NormalizeJsonPayload(request.UserSleep),
-            NormalizeJsonPayload(request.UserStress),
-            NormalizeJsonPayload(request.UserSpo2)
+            BuildSummarySleepPayload(request),
+            BuildSummarySnapshotPayload(request)
         );
 
     private static DetailPayload NormalizeDetailPayload(DetailRequest request)
@@ -258,29 +256,100 @@ public static partial class ApiHandlers
         }
     }
 
+    private static string BuildSummarySleepPayload(SummaryRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.UserSleep))
+        {
+            return NormalizeJsonPayload(request.UserSleep);
+        }
+
+        var totalSleepMinutes = request.Sleep.HasValue
+            ? Math.Max(0, (int)Math.Round(request.Sleep.Value, MidpointRounding.AwayFromZero))
+            : 0;
+
+        var payload = new[]
+        {
+            new
+            {
+                total_sleep_minutes = totalSleepMinutes,
+                total_sleep_hours = Math.Round(totalSleepMinutes / 60m, 2, MidpointRounding.AwayFromZero),
+                sleep_text = string.IsNullOrWhiteSpace(request.SleepText) ? $"{totalSleepMinutes / 60}:{totalSleepMinutes % 60:D2}" : request.SleepText!.Trim(),
+                sleep_start = request.SleepStart,
+                sleep_end = request.SleepEnd,
+                sleep_type = string.IsNullOrWhiteSpace(request.SleepType) ? "night" : request.SleepType!.Trim().ToLowerInvariant()
+            }
+        };
+
+        return JsonSerializer.Serialize(payload);
+    }
+
+    private static string BuildSummarySnapshotPayload(SummaryRequest request)
+    {
+        var totalSleepMinutes = request.Sleep.HasValue
+            ? Math.Max(0, (int)Math.Round(request.Sleep.Value, MidpointRounding.AwayFromZero))
+            : 0;
+
+        var payload = new
+        {
+            device_time = request.DeviceTime,
+            mac_address = request.MacAddress,
+            upload_key = request.UploadKey,
+            employee_id = request.EmployeeId,
+            device_id = request.DeviceId,
+            company_id = request.CompanyId,
+            department_id = request.DepartmentId,
+            shift_id = request.ShiftId,
+            active = request.Active,
+            active_text = request.ActiveText,
+            steps = request.Steps,
+            steps_text = request.StepsText,
+            heart_rate = request.HeartRate,
+            heart_rate_text = request.HeartRateText,
+            distance = request.Distance,
+            distance_text = request.DistanceText,
+            calories = request.Calories,
+            calories_text = request.CaloriesText,
+            spo2 = request.Spo2,
+            spo2_text = request.Spo2Text,
+            stress = request.Stress,
+            stress_text = request.StressText,
+            total_sleep_minutes = totalSleepMinutes,
+            sleep_text = request.SleepText,
+            sleep_start = request.SleepStart,
+            sleep_end = request.SleepEnd,
+            sleep_type = request.SleepType,
+            light_sleep = request.LightSleep,
+            deep_sleep = request.DeepSleep,
+            rem_sleep = request.RemSleep,
+            awake = request.Awake,
+            wakeup = request.Wakeup,
+            status = request.Status,
+            app_version = request.AppVersion,
+            is_fit1 = request.IsFit1,
+            is_fit2 = request.IsFit2,
+            is_fit3 = request.IsFit3
+        };
+
+        return JsonSerializer.Serialize(payload);
+    }
+
     private static async Task EnqueueSummaryFiles(
         FileWriterQueue queue,
         CancellationToken cancellationToken,
         int employeeId,
         string requestKey,
         DateOnly recordDate,
-        string activity,
-        string sleep,
-        string stress,
-        string spo2)
+        string summarySnapshot)
     {
-        var tasks = new[]
-        {
-            new UploadFileTask(BuildMetricRelativePath("data_activity", recordDate, employeeId, "summary"), activity, "summary", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_sleep", recordDate, employeeId, "summary"), sleep, "summary", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_stress", recordDate, employeeId, "summary"), stress, "summary", requestKey, employeeId, recordDate),
-            new UploadFileTask(BuildMetricRelativePath("data_spo2", recordDate, employeeId, "summary"), spo2, "summary", requestKey, employeeId, recordDate)
-        };
+        var task = new UploadFileTask(
+            BuildMetricRelativePath("data_summary", recordDate, employeeId, "summary"),
+            summarySnapshot,
+            "summary",
+            requestKey,
+            employeeId,
+            recordDate);
 
-        foreach (var item in tasks)
-        {
-            await queue.EnqueueAsync(item, cancellationToken);
-        }
+        await queue.EnqueueAsync(task, cancellationToken);
     }
 
     private static async Task PersistFailedUploadPayloadAsync(

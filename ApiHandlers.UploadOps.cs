@@ -94,8 +94,8 @@ public static partial class ApiHandlers
         );
 
         logger.LogInformation(
-            "SUMMARY prepared traceId={TraceId} requestKey={RequestKey} recordDate={RecordDate} routeBase={RouteBase} retryCount={RetryCount} dbRawPayload={DbRawPayload}",
-            traceId, requestKey, recordDate, routeBase, retryCount, options.Value.StoreRawPayloadInSummaryDetail);
+            "SUMMARY prepared traceId={TraceId} requestKey={RequestKey} recordDate={RecordDate} routeBase={RouteBase} retryCount={RetryCount} dbMode={DbMode}",
+            traceId, requestKey, recordDate, routeBase, retryCount, "sleep_only");
 
         int summaryId;
         try
@@ -115,11 +115,11 @@ public static partial class ApiHandlers
                 await UpsertSummaryDetailAsync(
                     conn, tx, localSummaryId, companyId, departmentId, employee.Id, request.ShiftId, device.Id,
                     requestKey, recordDate, deviceTime, request.MacAddress!, request.AppVersion,
-                    ComputeSha256($"{request.EmployeeId}|{request.DeviceTime}|{payload.Activity}|{payload.Sleep}|{payload.Stress}|{payload.Spo2}"),
+                    ComputeSha256($"{request.EmployeeId}|{request.DeviceTime}|{payload.Sleep}"),
                     "summary",
-                    payload.Activity, payload.Sleep, payload.Stress, null, null, payload.Spo2,
+                    "[]", payload.Sleep, "[]", null, null, "[]",
                     null, null, null, null, null, null, null, null, null,
-                    options.Value.StoreRawPayloadInSummaryDetail
+                    true
                 );
                 logger.LogInformation("SUMMARY upsert_detail_ok traceId={TraceId} uploadKey={UploadKey}", traceId, requestKey);
 
@@ -150,7 +150,7 @@ public static partial class ApiHandlers
                 statusCode, (int)watch.ElapsedMilliseconds, retryCount, ex.GetType().Name, ex.Message,
                 net.Note, companyId, departmentId, employee.Id, device.Id, request.MacAddress, request.AppVersion,
                 net.Transport, net.Quality, net.IsApiReachable, net.IsApiSlow,
-                JsonSizeBytes(payload.Activity) + JsonSizeBytes(payload.Sleep) + JsonSizeBytes(payload.Stress) + JsonSizeBytes(payload.Spo2)
+                JsonSizeBytes(payload.SummaryFile)
             ));
             if (wasCancelled)
             {
@@ -164,7 +164,7 @@ public static partial class ApiHandlers
         currentStep = "sideeffect_enqueue";
         logger.LogInformation("SUMMARY sideeffect_enqueue_start traceId={TraceId} requestKey={RequestKey}", traceId, requestKey);
         await TrySideEffectAsync(
-            async () => await EnqueueSummaryFiles(fileQueue, CancellationToken.None, employee.Id, requestKey, recordDate, payload.Activity, payload.Sleep, payload.Stress, payload.Spo2),
+            async () => await EnqueueSummaryFiles(fileQueue, CancellationToken.None, employee.Id, requestKey, recordDate, payload.SummaryFile),
             ex => sideEffectWarnings.Add("enqueue:" + ex.GetType().Name),
             async ex => await SafeInsertLogAsync(db, BuildUploadLog(
                 traceId, "summary_sideeffect_enqueue", "/api/summary", context.Request.Path.Value, routeBase, requestKey,
@@ -207,7 +207,7 @@ public static partial class ApiHandlers
             StatusCodes.Status200OK, (int)watch.ElapsedMilliseconds, retryCount, null, null,
             net.Note, companyId, departmentId, employee.Id, device.Id, request.MacAddress, request.AppVersion,
             net.Transport, net.Quality, net.IsApiReachable, net.IsApiSlow,
-            JsonSizeBytes(payload.Activity) + JsonSizeBytes(payload.Sleep) + JsonSizeBytes(payload.Stress) + JsonSizeBytes(payload.Spo2)
+            JsonSizeBytes(payload.SummaryFile)
         ));
         logger.LogInformation("SUMMARY success traceId={TraceId} summaryId={SummaryId} requestKey={RequestKey} warnings={WarningCount} durationMs={DurationMs}",
             traceId, summaryId, requestKey, sideEffectWarnings.Count, watch.ElapsedMilliseconds);

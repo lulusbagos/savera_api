@@ -26,6 +26,7 @@ if not exist "%UPLOAD_ROOT%" mkdir "%UPLOAD_ROOT%"
 if not exist "%UPLOAD_ROOT%\avatar" mkdir "%UPLOAD_ROOT%\avatar"
 
 REM Folder metric akan dibuat otomatis saat write, tapi dipra-siapkan agar rapi
+if not exist "%UPLOAD_ROOT%\data_summary" mkdir "%UPLOAD_ROOT%\data_summary"
 if not exist "%UPLOAD_ROOT%\data_activity" mkdir "%UPLOAD_ROOT%\data_activity"
 if not exist "%UPLOAD_ROOT%\data_sleep" mkdir "%UPLOAD_ROOT%\data_sleep"
 if not exist "%UPLOAD_ROOT%\data_stress" mkdir "%UPLOAD_ROOT%\data_stress"
