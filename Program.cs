@@ -70,6 +70,17 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 var app = builder.Build();
+var startupLogger = app.Logger;
+var dataSource = app.Services.GetRequiredService<NpgsqlDataSource>();
+try
+{
+    await UploadSchemaBootstrap.EnsureAsync(dataSource, startupLogger, app.Lifetime.ApplicationStopping);
+}
+catch (Exception ex)
+{
+    startupLogger.LogError(ex, "Failed to ensure upload schema bootstrap");
+    throw;
+}
 
 app.UseSwagger();
 app.UseSwaggerUI();
