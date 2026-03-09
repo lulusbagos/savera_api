@@ -23,6 +23,12 @@ ALTER TABLE IF EXISTS public.tbl_t_summary
             transaction: tx);
 
         await conn.ExecuteAsync(@"
+ALTER TABLE IF EXISTS public.tbl_t_summary
+  ALTER COLUMN app_version TYPE varchar(64);
+",
+            transaction: tx);
+
+        await conn.ExecuteAsync(@"
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tbl_t_summary_company_upload_key
 ON public.tbl_t_summary(company_id, upload_key)
 WHERE deleted_at IS NULL
@@ -63,6 +69,12 @@ ALTER TABLE IF EXISTS public.tbl_t_summary_detail
   ADD COLUMN IF NOT EXISTS user_body_energy jsonb,
   ADD COLUMN IF NOT EXISTS created_at timestamp NOT NULL DEFAULT now(),
   ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();
+",
+            transaction: tx);
+
+        await conn.ExecuteAsync(@"
+ALTER TABLE IF EXISTS public.tbl_t_summary_detail
+  ALTER COLUMN app_version TYPE varchar(64);
 ",
             transaction: tx);
 

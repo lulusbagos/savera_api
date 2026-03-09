@@ -6,6 +6,17 @@ namespace SaveraApi;
 
 public static partial class ApiHandlers
 {
+    private static string? LimitText(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+
     private static int ToSafeInt(decimal? value)
     {
         if (!value.HasValue)
@@ -190,7 +201,7 @@ WHERE id=@Id", new
                 SendDate = sendDate,
                 SendTime = now.TimeOfDay,
                 DeviceTime = request.DeviceTime,
-                AppVersion = request.AppVersion,
+                AppVersion = LimitText(request.AppVersion, 64),
                 Active = ToSafeInt(request.Active),
                 ActiveText = request.ActiveText,
                 Steps = ToSafeInt(request.Steps),
@@ -254,7 +265,7 @@ RETURNING id", new
             SendDate = sendDate,
             SendTime = now.TimeOfDay,
             DeviceTime = request.DeviceTime,
-            AppVersion = request.AppVersion,
+            AppVersion = LimitText(request.AppVersion, 64),
             Active = ToSafeInt(request.Active),
             ActiveText = request.ActiveText,
             Steps = ToSafeInt(request.Steps),
