@@ -507,7 +507,7 @@
         <!-- HERO -->
         <div class="hero" id="overview">
             <h1>API Reference</h1>
-            <p class="hero-sub">Dokumentasi lengkap endpoint Savera API untuk developer mobile. Semua request harus menggunakan HTTPS dan menyertakan header <code style="font-family:'JetBrains Mono',monospace;font-size:12px;background:rgba(0,212,255,0.08);padding:1px 6px;border-radius:3px;color:var(--cyan)">Accept: application/json</code>.</p>
+            <p class="hero-sub">Dokumentasi lengkap endpoint Savera API untuk developer mobile. Semua request harus menggunakan HTTPS. Header <code style="font-family:'JetBrains Mono',monospace;font-size:12px;background:rgba(0,212,255,0.08);padding:1px 6px;border-radius:3px;color:var(--cyan)">Accept: application/json</code> sangat disarankan untuk semua request, dan wajib untuk sebagian besar endpoint protected.</p>
             <div class="hero-meta">
                 <div class="hmeta"><i data-lucide="globe"></i>&nbsp;<strong>Base URL</strong>&nbsp;<code>https://savera_api.ungguldinamika.com/api</code></div>
                 <div class="hmeta"><i data-lucide="shield-check"></i>&nbsp;<strong>Auth</strong>&nbsp;<code>Bearer Token (Sanctum)</code></div>
@@ -520,11 +520,11 @@
 
         <div class="ep-card" style="margin-bottom:12px">
             <div style="padding:20px">
-                <p class="ep-desc">Setiap request ke API <strong>wajib</strong> menyertakan header berikut. Request tanpa header <code style="font-family:'JetBrains Mono',monospace">Accept</code> akan ditolak dengan status 401.</p>
+                <p class="ep-desc">Sebagian besar endpoint API menggunakan header berikut. Untuk endpoint publik seperti <code style="font-family:'JetBrains Mono',monospace">/login</code>, <code style="font-family:'JetBrains Mono',monospace">/register</code>, dan <code style="font-family:'JetBrains Mono',monospace">/health</code>, header <code style="font-family:'JetBrains Mono',monospace">Accept</code> tidak wajib, tetapi tetap disarankan.</p>
                 <div class="hdr-row">
                     <span class="hdr-key">Accept</span>
                     <span class="hdr-val">application/json</span>
-                    <span class="hdr-req req-yes">WAJIB (semua endpoint)</span>
+                    <span class="hdr-req req-opt">Disarankan (publik), wajib untuk mayoritas endpoint protected</span>
                 </div>
                 <div class="hdr-row">
                     <span class="hdr-key">Authorization</span>
@@ -556,7 +556,7 @@
                     <thead><tr><th>HTTP Status</th><th>Kondisi</th><th>Body</th></tr></thead>
                     <tbody>
                         <tr><td><span class="chip chip-green">200</span></td><td>Sukses</td><td><code style="font-family:'JetBrains Mono',monospace;font-size:10px">{ "message": "...", "data": {...} }</code></td></tr>
-                        <tr><td><span class="chip chip-amber">401</span></td><td>Tidak terautentikasi / token invalid / header Accept salah</td><td><code style="font-family:'JetBrains Mono',monospace;font-size:10px">{ "message": "Unauthenticated." }</code></td></tr>
+                        <tr><td><span class="chip chip-amber">401</span></td><td>Tidak terautentikasi / token invalid / header wajib endpoint protected tidak lengkap</td><td><code style="font-family:'JetBrains Mono',monospace;font-size:10px">{ "message": "Unauthenticated." }</code></td></tr>
                         <tr><td><span class="chip chip-amber">404</span></td><td>Resource tidak ditemukan</td><td><code style="font-family:'JetBrains Mono',monospace;font-size:10px">{ "message": "... not found." }</code></td></tr>
                         <tr><td><span class="chip chip-amber">422</span></td><td>Validasi gagal</td><td><code style="font-family:'JetBrains Mono',monospace;font-size:10px">{ "message": "...", "errors": { "field": ["..."] } }</code></td></tr>
                         <tr><td><span class="chip chip-amber">429</span></td><td>Too many requests / data sedang diproses</td><td><code style="font-family:'JetBrains Mono',monospace;font-size:10px">{ "message": "Data sedang diproses..." }</code></td></tr>
@@ -628,12 +628,12 @@
                 <span class="ep-toggle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
             </div>
             <div class="ep-body">
-                <p class="ep-desc">Login menggunakan email dan password. Simpan <code style="font-family:'JetBrains Mono',monospace">token</code> yang dikembalikan — wajib disertakan sebagai <code style="font-family:'JetBrains Mono',monospace">Authorization: Bearer {token}</code> di semua endpoint protected.</p>
+                <p class="ep-desc">Login menggunakan field <code style="font-family:'JetBrains Mono',monospace">email</code> dan password. Simpan <code style="font-family:'JetBrains Mono',monospace">token</code> yang dikembalikan — wajib disertakan sebagai <code style="font-family:'JetBrains Mono',monospace">Authorization: Bearer {token}</code> di semua endpoint protected. Endpoint ini bersifat publik dan tetap bisa dipanggil walau client belum mengirim header <code style="font-family:'JetBrains Mono',monospace">Accept</code>.</p>
                 <div class="ep-section-title">Request Body (JSON)</div>
                 <table class="field-table">
                     <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Keterangan</th></tr></thead>
                     <tbody>
-                        <tr><td class="field-name">email</td><td><span class="field-type">string</span></td><td><span class="field-req req-yes">Ya</span></td><td>Email terdaftar</td></tr>
+                        <tr><td class="field-name">email</td><td><span class="field-type">string</span></td><td><span class="field-req req-yes">Ya</span></td><td>Nilai pada kolom <code style="font-family:'JetBrains Mono',monospace">users.email</code>. Pada data lama bisa berupa email normal atau identifier seperti <code style="font-family:'JetBrains Mono',monospace">admin</code>.</td></tr>
                         <tr><td class="field-name">password</td><td><span class="field-type">string</span></td><td><span class="field-req req-yes">Ya</span></td><td>Minimal 5 karakter</td></tr>
                     </tbody>
                 </table>
@@ -1472,7 +1472,7 @@
                     <tbody>
                         <tr>
                             <td><span class="chip chip-amber">401</span></td>
-                            <td>Token expired / header <code style="font-family:'JetBrains Mono',monospace">Accept: application/json</code> tidak ada / header <code style="font-family:'JetBrains Mono',monospace">company</code> tidak ada</td>
+                            <td>Token invalid / token tidak ada / header <code style="font-family:'JetBrains Mono',monospace">company</code> tidak ada pada endpoint yang membutuhkannya</td>
                             <td>Cek semua header. Jika token masih ada di storage, coba <code>GET /profile</code>. Jika tetap 401 → redirect ke login screen &amp; hapus token.</td>
                         </tr>
                         <tr>

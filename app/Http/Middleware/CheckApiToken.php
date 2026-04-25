@@ -15,11 +15,14 @@ class CheckApiToken
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->is('api/health')) {
+        // Bypass untuk endpoint publik yang tidak butuh header Accept
+        if ($request->is('api/health') || $request->is('api/login') || $request->is('api/register')) {
             return $next($request);
         }
 
-        if (!in_array($request->headers->get('accept'), ['application/json', 'Application/Json'])) {
+        // Case-insensitive check untuk Accept header
+        $accept = strtolower($request->headers->get('accept', ''));
+        if (strpos($accept, 'application/json') === false) {
             return response([
                 'message' => 'Unauthenticated.'
             ], 401);
