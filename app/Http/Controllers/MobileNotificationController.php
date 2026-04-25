@@ -90,10 +90,35 @@ class MobileNotificationController extends Controller
      */
     private function resolveContext(Request $request): array
     {
-        $company = Company::query()
-            ->select(['id', 'code'])
-            ->where('code', (string) $request->header('company', ''))
-            ->first();
+        $companyCode = (string) $request->header('company', '');
+        $company = $companyCode !== ''
+            ? Company::query()
+                ->select(['id', 'code'])
+                ->where('code', $companyCode)
+                ->first()
+            : null;
+
+        if (! $company) {
+            $companyId = Employee::query()
+                ->where('user_id', $request->user()->id)
+                ->value('company_id');
+
+            $company = $companyId
+                ? Company::query()
+                    ->select(['id', 'code'])
+                    ->whereKey($companyId)
+                    ->first()
+                : null;
+        }
+
+        if (! $company) {
+            $company = Company::query()
+                ->select(['id', 'code'])
+                ->where('status', 1)
+                ->orderBy('id')
+                ->first();
+        }
+
         if (! $company) {
             return [null, null];
         }

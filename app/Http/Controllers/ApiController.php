@@ -28,7 +28,7 @@ class ApiController extends Controller
 {
     public function profile(Request $request)
     {
-        $company = Company::where('code', $request->header('company'))->first();
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
         if (! $company) {
             return response([
                 'message' => 'Company not found.',
@@ -71,7 +71,7 @@ class ApiController extends Controller
 
     public function avatar(Request $request)
     {
-        $company = Company::where('code', $request->header('company'))->first();
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
         if (! $company) {
             return response([
                 'message' => 'Company not found.',
@@ -140,7 +140,7 @@ class ApiController extends Controller
             ], 404);
         }
 
-        $company = Company::where('code', $request->header('company'))->first();
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
         if (! $company) {
             return response([
                 'message' => 'Company not found.',
@@ -183,7 +183,7 @@ class ApiController extends Controller
 
     public function summary(Request $request)
     {
-        $company = $this->findCompanyByCode($request->header('company'));
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
         if (! $company) {
             return response([
                 'message' => 'Company not found.',
@@ -219,7 +219,7 @@ class ApiController extends Controller
 
     public function detail(Request $request)
     {
-        $company = $this->findCompanyByCode($request->header('company'));
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
         if (! $company) {
             // Logging error harian
             return response([
@@ -251,7 +251,7 @@ class ApiController extends Controller
 
     public function ticket(Request $request, $id = null)
     {
-        $company = Company::where('code', $request->header('company'))->first();
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
         if (! $company) {
             return response([
                 'message' => 'Company not found.',
@@ -394,7 +394,7 @@ class ApiController extends Controller
 
     public function leave(Request $request)
     {
-        $company = Company::where('code', $request->header('company'))->first();
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
         if (! $company) {
             return response([
                 'message' => 'Company not found.',
@@ -451,7 +451,7 @@ class ApiController extends Controller
     public function banner(Request $request)
     {
         try {
-            $company = Company::where('code', $request->header('company'))->first();
+            $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
             if (! $company) {
                 return response([
                     'message' => 'Company not found.',
@@ -486,7 +486,7 @@ class ApiController extends Controller
 
     public function ranking(Request $request, $id = null)
     {
-        $company = Company::where('code', $request->header('company'))->first();
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
         if (! $company) {
             return response([
                 'message' => 'Company not found.',
@@ -602,15 +602,36 @@ class ApiController extends Controller
         return 'device:' . $companyId . ':' . Str::of($macAddress)->lower()->replace(':', '');
     }
 
-    private function findCompanyByCode(?string $code): ?Company
+    private function findCompanyByCode(?string $code, ?int $userId = null): ?Company
     {
-        if (! $code) {
-            return null;
+        if ($code) {
+            $company = Company::query()
+                ->select(['id', 'code', 'name'])
+                ->where('code', $code)
+                ->first();
+
+            if ($company) {
+                return $company;
+            }
+        }
+
+        if ($userId) {
+            $companyId = Employee::query()
+                ->where('user_id', $userId)
+                ->value('company_id');
+
+            if ($companyId) {
+                return Company::query()
+                    ->select(['id', 'code', 'name'])
+                    ->whereKey($companyId)
+                    ->first();
+            }
         }
 
         return Company::query()
-            ->select(['id', 'code'])
-            ->where('code', $code)
+            ->select(['id', 'code', 'name'])
+            ->where('status', 1)
+            ->orderBy('id')
             ->first();
     }
 
@@ -855,3 +876,4 @@ class ApiController extends Controller
         ];
     }
 }
+

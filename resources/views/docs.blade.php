@@ -11,34 +11,37 @@
 <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-        --bg:            #020b18;
-        --panel:         rgba(6,18,36,0.85);
-        --panel2:        rgba(4,14,28,0.95);
-        --outline:       rgba(255,255,255,0.07);
-        --outline-strong:rgba(255,255,255,0.13);
-        --text:          #e8edf5;
-        --text-dim:      #8ba0b8;
-        --muted:         #4e6175;
-        --cyan:          #00d4ff;
-        --purple:        #b060ff;
-        --green:         #00ffaa;
-        --amber:         #ffb800;
-        --red:           #ff3c5a;
-        --blue:          #3d7fff;
-        --teal:          #00e5cc;
-        --pink:          #ff1f8e;
-        --glow-cyan:     rgba(0,212,255,0.12);
-        --glow-green:    rgba(0,255,170,0.12);
-        --glow-purple:   rgba(176,96,255,0.12);
-        --glow-amber:    rgba(255,184,0,0.12);
-        --glow-red:      rgba(255,60,90,0.12);
+        --bg:            #f6fbff;
+        --panel:         rgba(255,255,255,0.92);
+        --panel2:        rgba(248,252,255,0.98);
+        --outline:       rgba(15,23,42,0.10);
+        --outline-strong:rgba(15,23,42,0.18);
+        --text:          #132033;
+        --text-dim:      #4b637d;
+        --muted:         #7890aa;
+        --cyan:          #0284c7;
+        --purple:        #7c3aed;
+        --green:         #059669;
+        --amber:         #d97706;
+        --red:           #dc2626;
+        --blue:          #2563eb;
+        --teal:          #0d9488;
+        --pink:          #db2777;
+        --glow-cyan:     rgba(2,132,199,0.13);
+        --glow-green:    rgba(5,150,105,0.12);
+        --glow-purple:   rgba(124,58,237,0.12);
+        --glow-amber:    rgba(217,119,6,0.12);
+        --glow-red:      rgba(220,38,38,0.12);
         --radius-lg:     14px;
         --radius-md:     10px;
         --radius-sm:     7px;
     }
     html { scroll-behavior: smooth; }
     body {
-        background: var(--bg);
+        background:
+            radial-gradient(circle at top left, rgba(14,165,233,0.22), transparent 32%),
+            radial-gradient(circle at top right, rgba(124,58,237,0.14), transparent 28%),
+            linear-gradient(180deg, #ffffff 0%, var(--bg) 42%, #edf7ff 100%);
         color: var(--text);
         font-family: 'Poppins', system-ui, sans-serif;
         font-size: 13px;
@@ -49,8 +52,8 @@
         content: '';
         position: fixed; inset: 0; z-index: 0; pointer-events: none;
         background-image:
-            linear-gradient(rgba(0,200,255,0.025) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0,200,255,0.025) 1px, transparent 1px);
+            linear-gradient(rgba(2,132,199,0.055) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(124,58,237,0.045) 1px, transparent 1px);
         background-size: 52px 52px;
     }
     .topbar-glow {
@@ -64,9 +67,10 @@
     .topnav {
         display: flex; align-items: center; justify-content: space-between;
         padding: 0 28px; height: 58px;
-        background: rgba(2,11,24,0.92);
+        background: rgba(255,255,255,0.88);
         border-bottom: 1px solid var(--outline);
         backdrop-filter: blur(16px);
+        box-shadow: 0 12px 36px rgba(15,23,42,0.08);
         position: sticky; top: 0; z-index: 100;
     }
     .nav-brand { display: flex; align-items: center; gap: 12px; }
@@ -74,22 +78,22 @@
         width: 36px; height: 36px; border-radius: 10px;
         background: linear-gradient(135deg, var(--purple), var(--cyan));
         display: flex; align-items: center; justify-content: center;
-        box-shadow: 0 0 20px rgba(176,96,255,0.45), 0 0 40px rgba(176,96,255,0.15);
+        box-shadow: 0 14px 30px rgba(37,99,235,0.24);
     }
     .nav-logo svg { width: 18px; height: 18px; stroke: #fff; stroke-width: 2; }
-    .nav-title { font-weight: 700; font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--purple); text-shadow: 0 0 12px rgba(176,96,255,0.6); }
+    .nav-title { font-weight: 700; font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--blue); }
     .nav-subtitle { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
     .nav-right { display: flex; align-items: center; gap: 10px; }
     .nav-btn {
         padding: 6px 14px; border-radius: var(--radius-sm);
-        border: 1px solid var(--outline-strong); background: rgba(0,212,255,0.06);
+        border: 1px solid var(--outline-strong); background: rgba(255,255,255,0.72);
         color: var(--text-dim); font-weight: 600; font-size: 11px;
         letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; transition: all 0.2s;
         font-family: 'Poppins', sans-serif; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
     }
-    .nav-btn:hover { background: rgba(0,212,255,0.12); color: var(--cyan); border-color: rgba(0,212,255,0.4); }
-    .nav-btn.active { color: var(--purple); border-color: rgba(176,96,255,0.45); background: rgba(176,96,255,0.10); }
-    .version-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(176,96,255,0.3); background: rgba(176,96,255,0.08); color: var(--purple); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; font-family: 'JetBrains Mono', monospace; }
+    .nav-btn:hover { background: rgba(2,132,199,0.10); color: var(--cyan); border-color: rgba(2,132,199,0.34); }
+    .nav-btn.active { color: var(--purple); border-color: rgba(124,58,237,0.34); background: rgba(124,58,237,0.08); }
+    .version-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(124,58,237,0.24); background: rgba(124,58,237,0.08); color: var(--purple); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; font-family: 'JetBrains Mono', monospace; }
 
     /* ── LAYOUT ── */
     .layout { display: flex; height: calc(100vh - 58px); }
@@ -101,7 +105,7 @@
         height: calc(100vh - 58px);
     }
     .sidebar::-webkit-scrollbar { width: 4px; }
-    .sidebar::-webkit-scrollbar-thumb { background: rgba(176,96,255,0.2); border-radius: 2px; }
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(37,99,235,0.24); border-radius: 2px; }
     .main { flex: 1; overflow-y: auto; padding: 36px 40px 80px; position: relative; z-index: 1; }
     .main::-webkit-scrollbar { width: 6px; }
     .main::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.15); border-radius: 3px; }
@@ -116,8 +120,8 @@
         text-decoration: none; transition: all 0.15s; border: 1px solid transparent;
         margin-bottom: 2px;
     }
-    .sidebar-link:hover { color: var(--text); background: rgba(255,255,255,0.04); }
-    .sidebar-link.active { color: var(--cyan); background: rgba(0,212,255,0.08); border-color: rgba(0,212,255,0.2); }
+    .sidebar-link:hover { color: var(--text); background: rgba(37,99,235,0.07); }
+    .sidebar-link.active { color: var(--cyan); background: rgba(2,132,199,0.10); border-color: rgba(2,132,199,0.24); }
     .sidebar-link .sl-method { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; min-width: 36px; text-align: center; }
     .m-get    { background: rgba(0,212,255,0.15);   color: var(--cyan);   }
     .m-post   { background: rgba(0,255,170,0.12);   color: var(--green);  }
@@ -128,7 +132,7 @@
     .hero { margin-bottom: 40px; }
     .hero h1 {
         font-size: 38px; font-weight: 700; letter-spacing: -1px; line-height: 1.1;
-        background: linear-gradient(135deg, #ffffff 0%, var(--purple) 50%, var(--cyan) 100%);
+        background: linear-gradient(135deg, #0f172a 0%, var(--blue) 45%, var(--teal) 100%);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
     .hero-sub { font-size: 13px; color: var(--text-dim); margin-top: 10px; max-width: 620px; line-height: 1.7; }
@@ -158,28 +162,29 @@
     .ep-card {
         background: var(--panel); border: 1px solid var(--outline);
         border-radius: var(--radius-lg); margin-bottom: 20px;
-        overflow: hidden; transition: border-color 0.2s;
+        overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
         position: relative;
+        box-shadow: 0 16px 42px rgba(15,23,42,0.07);
     }
-    .ep-card::before { content: ''; position: absolute; top: 0; left: 0; width: 14px; height: 14px; border-top: 1px solid rgba(0,212,255,0.4); border-left: 1px solid rgba(0,212,255,0.4); border-radius: var(--radius-lg) 0 0 0; pointer-events: none; }
-    .ep-card:hover { border-color: var(--outline-strong); }
-    .ep-card.post-card::before { border-color: rgba(0,255,170,0.4); }
+    .ep-card::before { content: ''; position: absolute; top: 0; left: 0; width: 14px; height: 14px; border-top: 1px solid rgba(2,132,199,0.38); border-left: 1px solid rgba(2,132,199,0.38); border-radius: var(--radius-lg) 0 0 0; pointer-events: none; }
+    .ep-card:hover { border-color: var(--outline-strong); box-shadow: 0 18px 48px rgba(15,23,42,0.10); transform: translateY(-1px); }
+    .ep-card.post-card::before { border-color: rgba(5,150,105,0.38); }
     .ep-header {
         display: flex; align-items: center; gap: 14px; padding: 16px 20px;
         border-bottom: 1px solid var(--outline); cursor: pointer; user-select: none;
         flex-wrap: wrap;
     }
-    .ep-header:hover { background: rgba(255,255,255,0.02); }
+    .ep-header:hover { background: rgba(37,99,235,0.04); }
     .method-badge { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
-    .mb-get    { background: rgba(0,212,255,0.14);  color: var(--cyan);   border: 1px solid rgba(0,212,255,0.3);  }
-    .mb-post   { background: rgba(0,255,170,0.12);  color: var(--green);  border: 1px solid rgba(0,255,170,0.3);  }
-    .mb-any    { background: rgba(176,96,255,0.12); color: var(--purple); border: 1px solid rgba(176,96,255,0.3); }
+    .mb-get    { background: rgba(2,132,199,0.12);  color: var(--cyan);   border: 1px solid rgba(2,132,199,0.28);  }
+    .mb-post   { background: rgba(5,150,105,0.12);  color: var(--green);  border: 1px solid rgba(5,150,105,0.28);  }
+    .mb-any    { background: rgba(124,58,237,0.11); color: var(--purple); border: 1px solid rgba(124,58,237,0.28); }
     .ep-path { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: var(--text); flex: 1; }
     .ep-path span { color: var(--amber); }
     .ep-title { font-size: 12px; color: var(--text-dim); }
     .auth-tag { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; flex-shrink: 0; }
-    .auth-public { background: rgba(0,255,170,0.10); color: var(--green); border: 1px solid rgba(0,255,170,0.25); }
-    .auth-private { background: rgba(255,184,0,0.10); color: var(--amber); border: 1px solid rgba(255,184,0,0.25); }
+    .auth-public { background: rgba(5,150,105,0.10); color: var(--green); border: 1px solid rgba(5,150,105,0.24); }
+    .auth-private { background: rgba(217,119,6,0.10); color: var(--amber); border: 1px solid rgba(217,119,6,0.24); }
     .ep-toggle { margin-left: auto; color: var(--muted); transition: transform 0.2s; flex-shrink: 0; }
     .ep-toggle svg { width: 14px; height: 14px; stroke-width: 2; }
     .ep-body { padding: 20px; border-top: 1px solid var(--outline); display: none; }
@@ -190,10 +195,10 @@
     .ep-desc { font-size: 12px; color: var(--text-dim); line-height: 1.7; margin-bottom: 16px; }
     .ep-section-title { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; font-family: 'JetBrains Mono', monospace; }
     .field-table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
-    .field-table th { padding: 8px 10px; text-align: left; font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan); border-bottom: 1px solid var(--outline-strong); background: rgba(0,212,255,0.03); font-family: 'JetBrains Mono', monospace; }
-    .field-table td { padding: 8px 10px; font-size: 11px; color: var(--text-dim); border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: top; }
+    .field-table th { padding: 8px 10px; text-align: left; font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan); border-bottom: 1px solid var(--outline-strong); background: rgba(2,132,199,0.06); font-family: 'JetBrains Mono', monospace; }
+    .field-table td { padding: 8px 10px; font-size: 11px; color: var(--text-dim); border-bottom: 1px solid rgba(15,23,42,0.06); vertical-align: top; }
     .field-table tr:last-child td { border-bottom: none; }
-    .field-table tr:hover td { background: rgba(0,212,255,0.02); }
+    .field-table tr:hover td { background: rgba(2,132,199,0.04); }
     .field-name { font-family: 'JetBrains Mono', monospace; color: var(--text); font-weight: 600; font-size: 11px; }
     .field-type { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(176,96,255,0.10); color: var(--purple); }
     .field-req  { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
@@ -202,10 +207,11 @@
 
     /* ── CODE BLOCK ── */
     .code-block {
-        background: rgba(0,0,0,0.4); border: 1px solid var(--outline); border-radius: var(--radius-md);
+        background: #f8fafc; border: 1px solid rgba(148,163,184,0.28); border-radius: var(--radius-md);
         padding: 16px 18px; font-family: 'JetBrains Mono', monospace; font-size: 11px;
         line-height: 1.7; color: var(--text-dim); overflow-x: auto; margin-top: 4px;
         position: relative;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
     }
     .code-block .k  { color: var(--purple); }
     .code-block .s  { color: var(--green); }
@@ -215,7 +221,7 @@
     .copy-btn {
         position: absolute; top: 10px; right: 10px;
         padding: 3px 10px; border-radius: 5px; border: 1px solid var(--outline);
-        background: var(--panel); color: var(--muted); font-size: 9px; font-weight: 700;
+        background: #ffffff; color: var(--muted); font-size: 9px; font-weight: 700;
         cursor: pointer; letter-spacing: 0.06em; text-transform: uppercase; font-family: 'Poppins', sans-serif;
         transition: all 0.15s;
     }
@@ -242,10 +248,10 @@
     .info-box.green { background: rgba(0,255,170,0.07); border: 1px solid rgba(0,255,170,0.2); color: var(--text-dim); }
     .info-box.green svg { stroke: var(--green); }
     .info-box strong { color: var(--text); }
-    .info-box code  { font-family: 'JetBrains Mono', monospace; font-size: 11px; background: rgba(255,255,255,0.06); padding: 0 5px; border-radius: 3px; }
+    .info-box code  { font-family: 'JetBrains Mono', monospace; font-size: 11px; background: rgba(255,255,255,0.72); padding: 0 5px; border-radius: 3px; }
 
     /* ── HEADER TABLE ── */
-    .hdr-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--radius-sm); background: rgba(255,255,255,0.02); border: 1px solid var(--outline); margin-bottom: 6px; flex-wrap: wrap; }
+    .hdr-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--radius-sm); background: rgba(248,250,252,0.86); border: 1px solid var(--outline); margin-bottom: 6px; flex-wrap: wrap; }
     .hdr-key  { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--cyan); font-weight: 600; min-width: 180px; }
     .hdr-val  { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-dim); flex: 1; }
     .hdr-req  { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
@@ -270,24 +276,27 @@
 /* ═══════════════════════ PASSWORD GATE ═══════════════════════ */
 #pw-gate {
     position: fixed; inset: 0; z-index: 9999;
-    background: #020b18;
+    background:
+        radial-gradient(circle at 20% 20%, rgba(14,165,233,0.22), transparent 32%),
+        radial-gradient(circle at 80% 0%, rgba(124,58,237,0.16), transparent 28%),
+        linear-gradient(180deg, #ffffff 0%, #eef8ff 100%);
     display: flex; align-items: center; justify-content: center;
     flex-direction: column; gap: 0;
 }
 #pw-gate .gate-card {
-    background: rgba(6,18,36,0.97);
-    border: 1px solid rgba(0,212,255,0.25);
+    background: rgba(255,255,255,0.94);
+    border: 1px solid rgba(2,132,199,0.18);
     border-radius: 16px;
     padding: 48px 44px 40px;
     width: 100%; max-width: 400px;
-    box-shadow: 0 0 60px rgba(0,212,255,0.07), 0 0 120px rgba(0,0,0,0.6);
+    box-shadow: 0 24px 70px rgba(15,23,42,0.14);
     text-align: center;
 }
 #pw-gate .gate-logo {
     width: 52px; height: 52px;
     border-radius: 14px;
-    background: linear-gradient(135deg, rgba(0,212,255,0.18), rgba(61,127,255,0.18));
-    border: 1px solid rgba(0,212,255,0.3);
+    background: linear-gradient(135deg, rgba(2,132,199,0.14), rgba(124,58,237,0.14));
+    border: 1px solid rgba(2,132,199,0.22);
     display: flex; align-items: center; justify-content: center;
     margin: 0 auto 20px;
     font-size: 22px;
@@ -305,8 +314,8 @@
 #pw-gate input {
     width: 100%;
     padding: 12px 44px 12px 16px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(248,250,252,0.94);
+    border: 1px solid rgba(15,23,42,0.12);
     border-radius: 8px;
     color: var(--text);
     font-family: 'JetBrains Mono', monospace;
@@ -315,7 +324,7 @@
     transition: border-color .2s;
     letter-spacing: 0.08em;
 }
-#pw-gate input:focus { border-color: rgba(0,212,255,0.5); }
+#pw-gate input:focus { border-color: rgba(2,132,199,0.5); box-shadow: 0 0 0 4px rgba(2,132,199,0.09); }
 #pw-gate input.shake {
     animation: pwShake .35s ease;
     border-color: var(--red) !important;
@@ -328,7 +337,7 @@
 #pw-gate .gate-btn {
     width: 100%;
     padding: 12px;
-    background: linear-gradient(90deg, #0090b8, #3d7fff);
+    background: linear-gradient(90deg, #0284c7, #2563eb);
     border: none; border-radius: 8px;
     color: #fff; font-family: 'Poppins', sans-serif;
     font-size: 13px; font-weight: 600; letter-spacing: 0.06em;
@@ -533,8 +542,8 @@
                 </div>
                 <div class="hdr-row">
                     <span class="hdr-key">company</span>
-                    <span class="hdr-val"><span style="color:var(--amber)">{company_code}</span> &nbsp;<span style="color:var(--muted);font-size:10px">contoh: INDEXIM</span></span>
-                    <span class="hdr-req req-yes">WAJIB (endpoint protected)</span>
+                    <span class="hdr-val"><span style="color:var(--amber)">{company_code}</span> &nbsp;<span style="color:var(--muted);font-size:10px">contoh: TEST</span></span>
+                    <span class="hdr-req req-opt">Disarankan (endpoint protected)</span>
                 </div>
                 <div class="hdr-row">
                     <span class="hdr-key">Content-Type</span>
@@ -543,7 +552,7 @@
                 </div>
                 <div class="info-box amber" style="margin-top:16px">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    <div>Token diperoleh dari endpoint <strong>Login</strong>. Simpan token di local storage / secure storage dan sertakan di setiap request bertanda <span class="chip chip-amber">AUTH</span>.</div>
+                    <div>Token dan <code>company.code</code> diperoleh dari endpoint <strong>Login</strong>. Simpan token di secure storage, lalu sertakan <code>Authorization: Bearer {token}</code> dan header <code>company: {company.code}</code> di request bertanda <span class="chip chip-amber">AUTH</span>. Jika header company kosong, server akan mencoba fallback ke company karyawan user.</div>
                 </div>
             </div>
         </div>
@@ -628,7 +637,7 @@
                 <span class="ep-toggle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
             </div>
             <div class="ep-body">
-                <p class="ep-desc">Login menggunakan field <code style="font-family:'JetBrains Mono',monospace">email</code> dan password. Simpan <code style="font-family:'JetBrains Mono',monospace">token</code> yang dikembalikan — wajib disertakan sebagai <code style="font-family:'JetBrains Mono',monospace">Authorization: Bearer {token}</code> di semua endpoint protected. Endpoint ini bersifat publik dan tetap bisa dipanggil walau client belum mengirim header <code style="font-family:'JetBrains Mono',monospace">Accept</code>.</p>
+                <p class="ep-desc">Login menggunakan field <code style="font-family:'JetBrains Mono',monospace">email</code> dan password. Untuk user test Android, gunakan <code style="font-family:'JetBrains Mono',monospace">email=admin</code> dan <code style="font-family:'JetBrains Mono',monospace">password=admin</code>. Simpan <code style="font-family:'JetBrains Mono',monospace">token</code> dan <code style="font-family:'JetBrains Mono',monospace">company.code</code> yang dikembalikan. Token wajib disertakan sebagai <code style="font-family:'JetBrains Mono',monospace">Authorization: Bearer {token}</code>, sedangkan <code style="font-family:'JetBrains Mono',monospace">company.code</code> sebaiknya dikirim sebagai header <code style="font-family:'JetBrains Mono',monospace">company</code> di endpoint protected.</p>
                 <div class="ep-section-title">Request Body (JSON)</div>
                 <table class="field-table">
                     <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Keterangan</th></tr></thead>
@@ -643,11 +652,16 @@
     <span class="n">"id"</span>: <span class="num">1</span>, <span class="n">"name"</span>: <span class="s">"BUDI"</span>, <span class="n">"email"</span>: <span class="s">"budi@example.com"</span>,
     <span class="n">"created_at"</span>: <span class="s">"2026-01-01T00:00:00.000000Z"</span>
   <span class="k">}</span>,
-  <span class="n">"token"</span>: <span class="s">"1|abcdefghijklmnop..."</span>   <span class="c">// simpan ini!</span>
+  <span class="n">"token"</span>: <span class="s">"1|abcdefghijklmnop..."</span>,
+  <span class="n">"company"</span>: <span class="k">{</span>
+    <span class="n">"id"</span>: <span class="num">7</span>,
+    <span class="n">"code"</span>: <span class="s">"TEST"</span>,
+    <span class="n">"name"</span>: <span class="s">"PT Test Mobile"</span>
+  <span class="k">}</span>
 <span class="k">}</span></div>
                 <div class="info-box cyan" style="margin-top:12px">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                    <div>Token bersifat <strong>persistent</strong> — tidak expire otomatis. Gunakan endpoint <code>/logout</code> untuk invalidasi token saat user keluar aplikasi.</div>
+                    <div>Token bersifat <strong>persistent</strong> — tidak expire otomatis. Untuk menghindari error <code>Company not found.</code>, Android sebaiknya menyimpan <code>company.code</code> dari response login dan mengirimkannya sebagai header <code>company</code>. Gunakan endpoint <code>/logout</code> untuk invalidasi token saat user keluar aplikasi.</div>
                 </div>
             </div>
         </div>
@@ -1402,7 +1416,7 @@
                             <div style="min-width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--green),var(--teal));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#000;flex-shrink:0">2</div>
                             <div>
                                 <div style="color:var(--green);font-weight:600;font-size:13px">Login / Register</div>
-                                <p style="color:var(--text-dim);margin:4px 0 0">User login via <code style="font-family:'JetBrains Mono',monospace">POST /api/login</code>. Simpan <code style="font-family:'JetBrains Mono',monospace">token</code> ke secure storage. Token tidak expire — cukup login sekali.</p>
+                                <p style="color:var(--text-dim);margin:4px 0 0">User login via <code style="font-family:'JetBrains Mono',monospace">POST /api/login</code>. Simpan <code style="font-family:'JetBrains Mono',monospace">token</code> dan <code style="font-family:'JetBrains Mono',monospace">company.code</code> ke secure storage. Token tidak expire — cukup login sekali.</p>
                             </div>
                         </div>
 
@@ -1413,7 +1427,7 @@
                                 <p style="color:var(--text-dim);margin:4px 0">Panggil <code style="font-family:'JetBrains Mono',monospace">GET /api/profile</code> untuk data karyawan (simpan <code>employee.id</code>).<br>Saat smartwatch terhubung, panggil <code style="font-family:'JetBrains Mono',monospace">GET /api/device/{mac}</code> untuk validasi perangkat.</p>
                                 <div class="info-box amber" style="margin-top:8px">
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                                    <div>Semua endpoint protected membutuhkan header <code style="font-family:'JetBrains Mono',monospace">company</code>. Nilai company code diperoleh dari konfigurasi build aplikasi (bukan dari API).</div>
+                                    <div>Endpoint protected sebaiknya mengirim header <code style="font-family:'JetBrains Mono',monospace">company</code>. Nilai company code diperoleh dari response login. Jika header kosong, server mencoba fallback dari company karyawan user.</div>
                                 </div>
                             </div>
                         </div>
@@ -1472,13 +1486,13 @@
                     <tbody>
                         <tr>
                             <td><span class="chip chip-amber">401</span></td>
-                            <td>Token invalid / token tidak ada / header <code style="font-family:'JetBrains Mono',monospace">company</code> tidak ada pada endpoint yang membutuhkannya</td>
+                            <td>Token invalid / token tidak ada / context company tidak bisa ditemukan</td>
                             <td>Cek semua header. Jika token masih ada di storage, coba <code>GET /profile</code>. Jika tetap 401 → redirect ke login screen &amp; hapus token.</td>
                         </tr>
                         <tr>
                             <td><span class="chip chip-amber">404</span> <small>Company not found</small></td>
-                            <td>Header <code style="font-family:'JetBrains Mono',monospace">company</code> salah atau kosong</td>
-                            <td>Verifikasi company code di konfigurasi build. Nilai berbeda per environment (dev vs prod).</td>
+                            <td>Header <code style="font-family:'JetBrains Mono',monospace">company</code> salah, atau user belum terhubung dengan employee/company</td>
+                            <td>Gunakan <code>company.code</code> dari response login. Untuk test Android saat ini nilainya <code>TEST</code>.</td>
                         </tr>
                         <tr>
                             <td><span class="chip chip-amber">404</span> <small>Employee not found</small></td>

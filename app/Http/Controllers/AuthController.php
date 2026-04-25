@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Company;
+use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -41,10 +43,16 @@ class AuthController extends Controller
             }
 
             $token = $user->createToken('auth_token')->plainTextToken;
+            $company = $this->resolveLoginCompany($user);
 
             return response([
                 'user' => $user,
-                'token' => $token
+                'token' => $token,
+                'company' => $company ? [
+                    'id' => $company->id,
+                    'code' => $company->code,
+                    'name' => $company->name,
+                ] : null,
             ]);
         } catch (Exception $e) {
             // Logging error harian
@@ -56,6 +64,26 @@ class AuthController extends Controller
             ], 500);
         }
         
+    }
+
+    private function resolveLoginCompany(User $user): ?Company
+    {
+        $employeeCompanyId = Employee::query()
+            ->where('user_id', $user->id)
+            ->value('company_id');
+
+        if ($employeeCompanyId) {
+            return Company::query()
+                ->select(['id', 'code', 'name'])
+                ->whereKey($employeeCompanyId)
+                ->first();
+        }
+
+        return Company::query()
+            ->select(['id', 'code', 'name'])
+            ->where('status', 1)
+            ->orderBy('id')
+            ->first();
     }
 
     public function logout(Request $request)
