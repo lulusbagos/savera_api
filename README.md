@@ -45,6 +45,42 @@ php artisan schedule:work
 
 Jangan pakai `php artisan serve` untuk uji beban paralel. Gunakan web server nyata seperti Nginx/Apache + PHP-FPM.
 
+## Remote Auto Deploy (GitHub Actions)
+
+Agar update bisa dari jauh tanpa SSH deploy manual setiap kali:
+
+1. Pasang **GitHub self-hosted runner** di server ini (sekali saja).
+2. Pastikan repo ini sudah ada workflow:
+   - `.github/workflows/deploy.yml`
+3. Saat ada `push` ke branch `main`, workflow akan:
+   - menjalankan `scripts/deploy_api.ps1`
+   - pull latest code
+   - `composer install --no-dev`
+   - `php artisan migrate --force`
+   - clear/cache config
+   - restart queue
+
+### Optional deploy admin
+
+Workflow bisa deploy admin juga lewat `workflow_dispatch` input `deploy_admin=true`.
+Script admin ada di `scripts/deploy_admin.ps1`.
+Jika folder admin belum git repo, script admin akan auto-skip dengan warning.
+
+### GitHub Actions variable (disarankan)
+
+Set repository variable:
+
+- `SAVERA_API_HEALTHCHECK_URL` = endpoint health API, contoh:
+  - `https://savera_api.ungguldinamika.com/up`
+
+### Manual trigger dari server (opsional)
+
+Jika butuh:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/deploy_all.ps1
+```
+
 ## Learning Laravel
 
 Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.

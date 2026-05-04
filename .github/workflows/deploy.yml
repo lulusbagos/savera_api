@@ -1,0 +1,36 @@
+name: Deploy Savera
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_admin:
+        description: "Deploy savera-admin too"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy API
+        shell: pwsh
+        run: |
+          ./scripts/deploy_api.ps1 `
+            -RepoPath "D:\APPS\savera-api\savera-api" `
+            -Branch "main" `
+            -HealthcheckUrl "${{ vars.SAVERA_API_HEALTHCHECK_URL }}"
+
+      - name: Deploy Admin (optional)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_admin == true }}
+        shell: pwsh
+        run: |
+          ./scripts/deploy_admin.ps1 `
+            -RepoPath "D:\APPS\savera-admin\savera-admin" `
+            -Branch "main"
