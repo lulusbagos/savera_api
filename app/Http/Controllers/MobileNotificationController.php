@@ -25,15 +25,31 @@ class MobileNotificationController extends Controller
                 $inner->whereNull('published_at')
                     ->orWhere('published_at', '<=', Carbon::now());
             })
+            ->where(function ($inner) {
+                $windowStart = Carbon::now()->subDays(31);
+                $inner
+                    ->where(function ($q) use ($windowStart) {
+                        $q->whereNotNull('published_at')
+                            ->where('published_at', '>=', $windowStart);
+                    })
+                    ->orWhere(function ($q) use ($windowStart) {
+                        $q->whereNull('published_at')
+                            ->where('created_at', '>=', $windowStart);
+                    });
+            })
             ->orderByRaw('CASE WHEN status = 0 THEN 0 ELSE 1 END')
             ->orderByDesc('published_at')
             ->orderByDesc('id');
 
         $rows = $query->limit(30)->get()->map(function (MobileNotification $row) {
+            $messageHtml = (string) ($row->message_html ?? '');
+            $messagePlain = trim(strip_tags($messageHtml));
             return [
                 'id' => $row->id,
                 'title' => $row->title,
-                'message_html' => $row->message_html,
+                'message_html' => $messageHtml,
+                'message' => $messagePlain,
+                'content_format' => 'html',
                 'status' => (int) $row->status,
                 'published_at' => optional($row->published_at ?? $row->created_at)->toISOString(),
                 'read_at' => optional($row->read_at)->toISOString(),
@@ -90,25 +106,34 @@ class MobileNotificationController extends Controller
      */
     private function resolveContext(Request $request): array
     {
-        $companyCode = (string) $request->header('company', '');
-        $company = $companyCode !== ''
-            ? Company::query()
+        $userCompanyId = Employee::query()
+            ->where('user_id', $request->user()->id)
+            ->value('company_id');
+
+        $company = null;
+        $companyCode = strtoupper(trim((string) $request->header('company', '')));
+        if ($companyCode !== '') {
+            $companies = Company::query()
                 ->select(['id', 'code'])
-                ->where('code', $companyCode)
-                ->first()
-            : null;
+                ->whereRaw('UPPER(code) = ?', [$companyCode])
+                ->orderBy('id')
+                ->get();
 
-        if (! $company) {
-            $companyId = Employee::query()
-                ->where('user_id', $request->user()->id)
-                ->value('company_id');
+            if ($companies->isNotEmpty()) {
+                if ($userCompanyId) {
+                    $company = $companies->firstWhere('id', (int) $userCompanyId);
+                }
+                if (! $company) {
+                    $company = $companies->first();
+                }
+            }
+        }
 
-            $company = $companyId
-                ? Company::query()
-                    ->select(['id', 'code'])
-                    ->whereKey($companyId)
-                    ->first()
-                : null;
+        if (! $company && $userCompanyId) {
+            $company = Company::query()
+                ->select(['id', 'code'])
+                ->whereKey($userCompanyId)
+                ->first();
         }
 
         if (! $company) {

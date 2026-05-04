@@ -13,12 +13,14 @@ use App\Models\Leave;
 use App\Models\Mess;
 use App\Models\Shift;
 use App\Models\Summary;
+use App\Services\MobileMetricPayloadNormalizer;
 use App\Models\Ticket;
 use App\Support\MobileIngestRuntime;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use JsonException;
 use Illuminate\Validation\ValidationException;
@@ -36,29 +38,19 @@ class ApiController extends Controller
         }
 
         $cacheKey = $this->profileCacheKey($company->id, $request->user()->id);
-
         $payload = Cache::store($this->cacheStore())->remember($cacheKey, 60, function () use ($company, $request) {
-            $user = $request->user()->toArray();
-            $employee = Employee::query()
-                ->select(['id', 'code', 'fullname', 'department_id', 'mess_id', 'device_id', 'company_id', 'user_id', 'photo', 'job', 'status'])
-                ->where('company_id', $company->id)
-                ->where('user_id', $request->user()->id)
-                ->first();
-            if (! $employee) {
-                return null;
-            }
-
-            $employee['department_name'] = (is_null($employee->department_id)) ? null : Department::query()->whereKey($employee->department_id)->value('name');
-            $employee['mess_name'] = (is_null($employee->mess_id)) ? null : Mess::query()->whereKey($employee->mess_id)->value('name');
-            $user['employee'] = $employee->toArray();
-            $user['shift'] = Shift::query()->whereKey(1)->first()?->toArray();
-            $user['device'] = (is_null($employee->device_id)) ? null : Device::query()->whereKey($employee->device_id)->first()?->toArray();
-            if (in_array($request->user()->name, ['SAVERA', 'ROMI', 'ANDRE', 'OBIT', 'ANDI', 'HULAEPI', 'FAISAL', 'ROBI', 'IVAN', 'EREN', 'TABLET 1', 'TABLET 2', 'TABLET 3', 'TABLET 4'])) {
-                $user['is_admin'] = 1;
-            }
-
-            return $user;
+            return $this->buildProfilePayload($company, $request);
         });
+
+        if ($payload === null) {
+            $fallbackCompany = $this->findCompanyByCode(null, $request->user()->id);
+            if ($fallbackCompany && (int) $fallbackCompany->id !== (int) $company->id) {
+                $fallbackKey = $this->profileCacheKey($fallbackCompany->id, $request->user()->id);
+                $payload = Cache::store($this->cacheStore())->remember($fallbackKey, 60, function () use ($fallbackCompany, $request) {
+                    return $this->buildProfilePayload($fallbackCompany, $request);
+                });
+            }
+        }
 
         if ($payload === null) {
             return response([
@@ -67,6 +59,31 @@ class ApiController extends Controller
         }
 
         return response($payload);
+    }
+
+    private function buildProfilePayload(Company $company, Request $request): ?array
+    {
+        $user = $request->user()->toArray();
+        $employee = Employee::query()
+            ->select(['id', 'code', 'fullname', 'department_id', 'mess_id', 'device_id', 'company_id', 'user_id', 'photo', 'job', 'status'])
+            ->where('company_id', $company->id)
+            ->where('user_id', $request->user()->id)
+            ->first();
+        if (! $employee) {
+            return null;
+        }
+
+        $employee['department_name'] = (is_null($employee->department_id)) ? null : Department::query()->whereKey($employee->department_id)->value('name');
+        $employee['mess_name'] = (is_null($employee->mess_id)) ? null : Mess::query()->whereKey($employee->mess_id)->value('name');
+        $user['employee'] = $employee->toArray();
+        $user['shift'] = Shift::query()->whereKey(1)->first()?->toArray();
+        $user['device'] = (is_null($employee->device_id)) ? null : Device::query()->whereKey($employee->device_id)->first()?->toArray();
+        $user['network_sync'] = $this->resolveNetworkSyncStatus($request, $employee);
+        if (in_array($request->user()->name, ['SAVERA', 'ROMI', 'ANDRE', 'OBIT', 'ANDI', 'HULAEPI', 'FAISAL', 'ROBI', 'IVAN', 'EREN', 'TABLET 1', 'TABLET 2', 'TABLET 3', 'TABLET 4'])) {
+            $user['is_admin'] = 1;
+        }
+
+        return $user;
     }
 
     public function avatar(Request $request)
@@ -147,12 +164,34 @@ class ApiController extends Controller
             ], 404);
         }
 
-        $cacheKey = $this->deviceCacheKey($company->id, (string) $mac);
-        $device = Cache::store($this->cacheStore())->remember($cacheKey, 60, function () use ($company, $mac) {
-            return Device::query()
-                ->select(['id', 'company_id', 'mac_address', 'device_name', 'brand', 'auth_key', 'is_active'])
+        $normalizedMac = $this->normalizeMacAddress((string) $mac);
+        $cacheKey = $this->deviceCacheKey($company->id, $normalizedMac);
+        $device = Cache::store($this->cacheStore())->remember($cacheKey, 60, function () use ($company, $normalizedMac) {
+            $select = ['id', 'company_id', 'mac_address', 'device_name', 'brand', 'auth_key', 'is_active'];
+            $normalizedSql = "LOWER(REPLACE(REPLACE(REPLACE(TRIM(mac_address), ':', ''), '-', ''), ' ', ''))";
+
+            $device = Device::query()
+                ->select($select)
                 ->where('company_id', $company->id)
-                ->where('mac_address', $mac)
+                ->whereRaw("{$normalizedSql} = ?", [$normalizedMac])
+                ->first();
+
+            if ($device) {
+                return $device;
+            }
+
+            // Fallback: some legacy device rows were stored under the wrong company,
+            // but the employee binding in the current company points to the correct device id.
+            return Device::query()
+                ->select($select)
+                ->whereRaw("{$normalizedSql} = ?", [$normalizedMac])
+                ->whereExists(function ($query) use ($company) {
+                    $query->select(DB::raw(1))
+                        ->from('employees')
+                        ->whereColumn('employees.device_id', 'devices.id')
+                        ->where('employees.company_id', $company->id)
+                        ->whereNull('employees.deleted_at');
+                })
                 ->first();
         });
         if (! $device) {
@@ -198,6 +237,7 @@ class ApiController extends Controller
                 'active' => 'required|numeric',
                 'steps' => 'required|numeric',
                 'heart_rate' => 'required|numeric',
+                'heart_rate_valid' => 'nullable|boolean',
                 'distance' => 'required|numeric',
                 'calories' => 'required|numeric',
                 'spo2' => 'required|numeric',
@@ -206,6 +246,13 @@ class ApiController extends Controller
                 'device_time' => 'required|string',
                 'mac_address' => 'required|string',
                 'employee_id' => 'required|numeric',
+                'is_fit1' => 'nullable',
+                'is_fit2' => 'nullable',
+                'is_fit3' => 'nullable',
+                'fit_to_work_q1' => 'nullable',
+                'fit_to_work_q2' => 'nullable',
+                'fit_to_work_q3' => 'nullable',
+                'fit_to_work_submitted_at' => 'nullable|date',
             ],
             metricMap: [
                 'data_activity' => 'user_activity',
@@ -295,12 +342,15 @@ class ApiController extends Controller
         $day = '-';
 
         try {
-            $lineup = DB::table('lineup_operator')
-                ->where('tanggal', date('Y-m-d'))
-                ->where('company_id', $company->id)
-                ->where('nik', $employee->code)
-                ->orderBy('no')
-                ->first();
+            $lineup = null;
+            if (Schema::hasTable('lineup_operator')) {
+                $lineup = DB::table('lineup_operator')
+                    ->where('tanggal', date('Y-m-d'))
+                    ->where('company_id', $company->id)
+                    ->where('nik', $employee->code)
+                    ->orderBy('no')
+                    ->first();
+            }
 
             if ($lineup) {
                 if ($lineup->shift == null || $lineup->shift == '') {
@@ -446,6 +496,100 @@ class ApiController extends Controller
                 'errors' => $e->errors(),
             ], $e->status);
         }
+    }
+
+    public function etiket(Request $request)
+    {
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
+        if (! $company) {
+            return response([
+                'message' => 'Company not found.',
+            ], 404);
+        }
+
+        $tanggal = trim((string) $request->input('tanggal', ''));
+        $nik = trim((string) $request->input('nik', ''));
+
+        if ($nik === '') {
+            $nik = (string) Employee::query()
+                ->where('company_id', $company->id)
+                ->where('user_id', $request->user()->id)
+                ->value('code');
+        }
+
+        $connectionName = (string) config('database.default', 'pgsql');
+        $configuredConnection = (string) env('ETIKET_DB_CONNECTION', $connectionName);
+        if (array_key_exists($configuredConnection, (array) config('database.connections', []))) {
+            $connectionName = $configuredConnection;
+        }
+
+        $rows = collect();
+        $availableColumns = [];
+
+        try {
+            $conn = DB::connection($connectionName);
+            $schema = $conn->getSchemaBuilder();
+
+            if ($schema->hasTable('lineup_operator')) {
+                $requestedColumns = [
+                    'no',
+                    'tanggal',
+                    'unit',
+                    'nik',
+                    'nama',
+                    'shift',
+                    'keterangan',
+                    'shift_detil',
+                    'pit',
+                    'area',
+                    'region',
+                    'tipe_unit',
+                    'model_unit',
+                    'fleet',
+                    'no_bus',
+                    'company_id',
+                    'updated_at',
+                ];
+
+                $availableColumns = $schema->getColumnListing('lineup_operator');
+                $selectColumns = array_values(array_intersect($requestedColumns, $availableColumns));
+
+                $query = $conn->table('lineup_operator')
+                    ->select($selectColumns)
+                    ->when(in_array('company_id', $availableColumns, true), function ($q) use ($company) {
+                        $q->where('company_id', $company->id);
+                    })
+                    ->when($tanggal !== '' && in_array('tanggal', $availableColumns, true), function ($q) use ($tanggal) {
+                        $q->whereDate('tanggal', $tanggal);
+                    })
+                    ->when($nik !== '' && in_array('nik', $availableColumns, true), function ($q) use ($nik) {
+                        $q->where('nik', $nik);
+                    })
+                    ->when(in_array('tanggal', $availableColumns, true), function ($q) {
+                        $q->orderByDesc('tanggal');
+                    })
+                    ->when(in_array('no', $availableColumns, true), function ($q) {
+                        $q->orderBy('no');
+                    });
+
+                $rows = $query->limit(300)->get();
+            }
+        } catch (Throwable) {
+            $rows = collect();
+        }
+
+        return response([
+            'message' => 'ok',
+            'data' => $rows,
+            'meta' => [
+                'total' => $rows->count(),
+                'company_id' => $company->id,
+                'nik' => $nik !== '' ? $nik : null,
+                'tanggal' => $tanggal !== '' ? $tanggal : null,
+                'source_connection' => $connectionName,
+                'table_available' => !empty($availableColumns),
+            ],
+        ]);
     }
 
     public function banner(Request $request)
@@ -599,33 +743,48 @@ class ApiController extends Controller
 
     private function deviceCacheKey(int $companyId, string $macAddress): string
     {
-        return 'device:' . $companyId . ':' . Str::of($macAddress)->lower()->replace(':', '');
+        return 'device:' . $companyId . ':' . $this->normalizeMacAddress($macAddress);
+    }
+
+    private function normalizeMacAddress(string $macAddress): string
+    {
+        return (string) Str::of(trim($macAddress))->lower()->replace(':', '')->replace('-', '')->replace(' ', '');
     }
 
     private function findCompanyByCode(?string $code, ?int $userId = null): ?Company
     {
-        if ($code) {
-            $company = Company::query()
-                ->select(['id', 'code', 'name'])
-                ->where('code', $code)
-                ->first();
+        $userCompanyId = null;
+        if ($userId) {
+            $userCompanyId = Employee::query()
+                ->where('user_id', $userId)
+                ->value('company_id');
+        }
 
-            if ($company) {
-                return $company;
+        $normalizedCode = strtoupper(trim((string) $code));
+        if ($normalizedCode !== '') {
+            $companies = Company::query()
+                ->select(['id', 'code', 'name'])
+                ->whereRaw('UPPER(code) = ?', [$normalizedCode])
+                ->orderBy('id')
+                ->get();
+
+            if ($companies->isNotEmpty()) {
+                if ($userCompanyId) {
+                    $preferred = $companies->firstWhere('id', (int) $userCompanyId);
+                    if ($preferred) {
+                        return $preferred;
+                    }
+                }
+
+                return $companies->first();
             }
         }
 
-        if ($userId) {
-            $companyId = Employee::query()
-                ->where('user_id', $userId)
-                ->value('company_id');
-
-            if ($companyId) {
-                return Company::query()
-                    ->select(['id', 'code', 'name'])
-                    ->whereKey($companyId)
-                    ->first();
-            }
+        if ($userCompanyId) {
+            return Company::query()
+                ->select(['id', 'code', 'name'])
+                ->whereKey($userCompanyId)
+                ->first();
         }
 
         return Company::query()
@@ -637,21 +796,59 @@ class ApiController extends Controller
 
     private function findDeviceByMac(int $companyId, string $macAddress): ?Device
     {
-        return Device::query()
+        $normalizedMac = $this->normalizeMacAddress($macAddress);
+        $normalizedSql = "LOWER(REPLACE(REPLACE(REPLACE(TRIM(mac_address), ':', ''), '-', ''), ' ', ''))";
+
+        $device = Device::query()
             ->select(['id', 'company_id', 'mac_address'])
             ->where('company_id', $companyId)
-            ->where('mac_address', $macAddress)
+            ->whereRaw("{$normalizedSql} = ?", [$normalizedMac])
+            ->first();
+
+        if ($device) {
+            return $device;
+        }
+
+        return Device::query()
+            ->select(['id', 'company_id', 'mac_address'])
+            ->whereRaw("{$normalizedSql} = ?", [$normalizedMac])
+            ->whereExists(function ($query) use ($companyId) {
+                $query->select(DB::raw(1))
+                    ->from('employees')
+                    ->whereColumn('employees.device_id', 'devices.id')
+                    ->where('employees.company_id', $companyId)
+                    ->whereNull('employees.deleted_at');
+            })
             ->first();
     }
 
     private function lockEmployeeByCompanyAndId(int $companyId, int $employeeId): ?Employee
     {
         return Employee::query()
-            ->select(['id', 'user_id', 'company_id'])
+            ->select(['id', 'user_id', 'company_id', 'device_id'])
             ->whereKey($employeeId)
             ->where('company_id', $companyId)
             ->lockForUpdate()
             ->first();
+    }
+
+    private function logIngestDeviceFailure(Request $request, Company $company, string $source, string $reason, ?Device $device = null, ?Employee $employee = null): void
+    {
+        LogHelper::logError('Mobile ingest device check failed:', json_encode([
+            'reason' => $reason,
+            'source' => $source,
+            'company_header' => (string) $request->header('company', ''),
+            'company_id' => $company->id,
+            'user_id' => $request->user()?->id,
+            'employee_id_payload' => $request->input('employee_id'),
+            'employee_id_found' => $employee?->id,
+            'employee_device_id' => $employee?->device_id,
+            'mac_address_payload' => $request->input('mac_address'),
+            'mac_address_normalized' => $this->normalizeMacAddress((string) $request->input('mac_address', '')),
+            'device_id_found' => $device?->id,
+            'device_company_id' => $device?->company_id,
+            'device_mac_address' => $device?->mac_address,
+        ], JSON_UNESCAPED_SLASHES));
     }
 
     /**
@@ -661,11 +858,18 @@ class ApiController extends Controller
     private function buildMetricWriteQueue(Request $request, array $metricMap, string $file): array
     {
         $filesToWrite = [];
+        /** @var MobileMetricPayloadNormalizer $normalizer */
+        $normalizer = app(MobileMetricPayloadNormalizer::class);
 
         foreach ($metricMap as $pathPrefix => $requestKey) {
+            $payload = $request->input($requestKey, null);
+            if ($payload === null) {
+                $payload = $request->input($pathPrefix, '[]');
+            }
+
             $filesToWrite[] = [
                 'path' => $pathPrefix.$file,
-                'contents' => $this->normalizeMetricPayload($request->input($requestKey, '[]')),
+                'contents' => $normalizer->normalizeForBucket($pathPrefix, $payload),
             ];
         }
 
@@ -709,6 +913,57 @@ class ApiController extends Controller
         return MobileIngestRuntime::cacheStore('file');
     }
 
+    private function resolveNetworkSyncStatus(Request $request, Employee $employee): array
+    {
+        $cache = Cache::store($this->cacheStore());
+        $userId = (int) ($request->user()?->id ?? 0);
+        $report = [];
+
+        if ($userId > 0) {
+            $cached = $cache->get('mobile_network_report:user:' . $userId, []);
+            if (is_array($cached)) {
+                $report = $cached;
+            }
+        }
+
+        $localBaseUrl = rtrim((string) config('mobile_network.local_base_url', ''), '/');
+        $localHost = $this->extractHost($localBaseUrl);
+        $ipScope = strtolower((string) ($report['ip_scope'] ?? 'unknown'));
+        $reportedAt = (string) ($report['reported_at'] ?? '');
+        $reportedAtValid = false;
+
+        if ($reportedAt !== '') {
+            try {
+                $reportedAtValid = Carbon::parse($reportedAt)->gt(now()->subHours(8));
+            } catch (Throwable) {
+                $reportedAtValid = false;
+            }
+        }
+
+        $localSynced = $localHost !== '' && $ipScope === 'local' && $reportedAtValid;
+
+        return [
+            'is_local_synced' => $localSynced,
+            'status_color' => $localSynced ? 'green' : 'red',
+            'status_label' => $localSynced ? 'Local IP sinkron dengan backend' : 'Local IP belum sinkron',
+            'local_base_url' => $localBaseUrl !== '' ? $localBaseUrl : null,
+            'active_ip_scope' => $ipScope,
+            'active_network_type' => (string) ($report['network_type'] ?? 'unknown'),
+            'reported_at' => $reportedAt !== '' ? $reportedAt : null,
+            'employee_id' => $employee->id,
+        ];
+    }
+
+    private function extractHost(string $url): string
+    {
+        if ($url === '') {
+            return '';
+        }
+
+        $host = (string) parse_url($url, PHP_URL_HOST);
+        return trim($host);
+    }
+
     private function lockStore(): string
     {
         return MobileIngestRuntime::lockStore($this->cacheStore());
@@ -722,17 +977,34 @@ class ApiController extends Controller
         $mode = MobileIngestRuntime::dispatchMode();
         $job = new StoreUserMetricsJob($filesToWrite, $source);
 
-        if ($mode === 'sync') {
+        try {
+            if (app()->runningUnitTests()) {
+                dispatch_sync($job);
+                return;
+            }
+
+            if ($mode === 'sync') {
+                dispatch_sync($job);
+                return;
+            }
+
+            if ($mode === 'queue' || ($mode === 'auto' && MobileIngestRuntime::usesAsyncQueue())) {
+                dispatch($job);
+                return;
+            }
+
+            dispatch($job)->afterResponse();
+        } catch (Throwable $e) {
+            LogHelper::logError('Dispatch metric write job fallback:', json_encode([
+                'source' => $source,
+                'mode' => $mode,
+                'queue_connection' => MobileIngestRuntime::queueConnection('sync'),
+                'error' => $e->getMessage(),
+            ], JSON_UNESCAPED_SLASHES));
+
+            // Fail-open fallback agar upload tidak 500 saat queue sedang terganggu.
             dispatch_sync($job);
-            return;
         }
-
-        if ($mode === 'queue' || ($mode === 'auto' && MobileIngestRuntime::usesAsyncQueue())) {
-            dispatch($job);
-            return;
-        }
-
-        dispatch($job)->afterResponse();
     }
 
     /**
@@ -755,7 +1027,7 @@ class ApiController extends Controller
 
         try {
             $employeeId = (int) $request->input('employee_id');
-            $deviceKey = Str::of((string) $request->input('mac_address'))->lower()->replace(':', '');
+            $deviceKey = $this->normalizeMacAddress((string) $request->input('mac_address'));
             $lockKey = "ingest:{$company->id}:{$employeeId}:{$deviceKey}:{$source}";
             $lock = Cache::store($this->lockStore())->lock($lockKey, 30);
 
@@ -769,6 +1041,7 @@ class ApiController extends Controller
                 $result = DB::transaction(function () use ($request, $company, $payloadBuilder, $metricMap, $source) {
                 $device = $this->findDeviceByMac($company->id, (string) $request->input('mac_address'));
                 if (! $device) {
+                    $this->logIngestDeviceFailure($request, $company, $source, 'device_mac_not_found');
                     return response([
                         'message' => 'Your device\'s MAC address is unavailable.',
                     ], 404);
@@ -776,8 +1049,17 @@ class ApiController extends Controller
 
                 $employee = $this->lockEmployeeByCompanyAndId($company->id, (int) $request->input('employee_id'));
                 if (! $employee) {
+                    $this->logIngestDeviceFailure($request, $company, $source, 'employee_not_found', $device);
                     return response([
                         'message' => 'Employee not found.',
+                    ], 404);
+                }
+
+                if ((int) ($employee->device_id ?? 0) !== (int) $device->id) {
+                    $this->logIngestDeviceFailure($request, $company, $source, 'device_employee_mismatch', $device, $employee);
+
+                    return response([
+                        'message' => 'Your device is not bound to this employee.',
                     ], 404);
                 }
 
@@ -836,17 +1118,29 @@ class ApiController extends Controller
         $req['send_date'] = Carbon::now()->toDateString();
         $req['send_time'] = Carbon::now()->toTimeString();
         $req['sleep_type'] = $request->input('sleep_type', 'night') ?? 'night';
+        $this->applyFitToWorkPayload($request, $req);
 
-        Summary::query()->updateOrCreate(
+        $heartRate = (float) ($req['heart_rate'] ?? 0);
+        $heartRateValid = $this->resolveHeartRateValidity($request->input('heart_rate_valid'), $heartRate);
+        // Nilai mentah tetap disimpan di heart_rate. Validitas diputuskan backend dari flag/range.
+        $req['heart_rate_text'] = $heartRateValid ? ((string) ((int) round($heartRate)) . ' bpm') : '-';
+
+        $summary = Summary::query()->updateOrCreate(
             [
+                'company_id' => $company->id,
                 'user_id' => $req['user_id'],
                 'send_date' => $req['send_date'],
                 'sleep_type' => $req['sleep_type'],
             ],
             $req
         );
+        $req['summary_id'] = $summary->id;
 
-        $file = Carbon::parse($req['send_date'])->format('/Y/m/d/').Str::padLeft($req['user_id'], 20, '0').'.json';
+        $deviceDate = Str::substr((string) ($req['device_time'] ?? ''), 0, 10);
+        $fileDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $deviceDate) === 1
+            ? $deviceDate
+            : (string) $req['send_date'];
+        $file = Carbon::parse($fileDate)->format('/Y/m/d/').Str::padLeft($req['user_id'], 20, '0').'.json';
 
         return [
             'data' => $req,
@@ -874,6 +1168,124 @@ class ApiController extends Controller
             'data' => $req,
             'file' => $file,
         ];
+    }
+
+    private function applyFitToWorkPayload(Request $request, array &$req): void
+    {
+        $answers = [
+            1 => $this->toBinaryAnswer($request->input('fit_to_work_q1', $request->input('is_fit1'))),
+            2 => $this->toBinaryAnswer($request->input('fit_to_work_q2', $request->input('is_fit2'))),
+            3 => $this->toBinaryAnswer($request->input('fit_to_work_q3', $request->input('is_fit3'))),
+        ];
+
+        $hasAnyAnswer = false;
+        foreach ($answers as $index => $answer) {
+            if ($answer === null) {
+                continue;
+            }
+
+            $hasAnyAnswer = true;
+            $req['is_fit' . $index] = $answer;
+            $req['fit_to_work_q' . $index] = $answer;
+        }
+
+        if ($hasAnyAnswer) {
+            $submittedAt = $request->input('fit_to_work_submitted_at');
+            $req['fit_to_work_submitted_at'] = $submittedAt ?: Carbon::now()->toDateTimeString();
+        }
+    }
+
+    private function toBinaryAnswer(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_bool($value)) {
+            return $value ? 1 : 0;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            if ((int) $value === 1) {
+                return 1;
+            }
+            if ((int) $value === 0) {
+                return 0;
+            }
+            return null;
+        }
+
+        $text = strtolower(trim((string) $value));
+        if (in_array($text, ['1', 'y', 'ya', 'yes', 'true'], true)) {
+            return 1;
+        }
+
+        if (in_array($text, ['0', 'n', 'no', 'tidak', 'false'], true)) {
+            return 0;
+        }
+
+        return null;
+    }
+
+    private function resolveHeartRateValidity(mixed $flag, float $heartRate): bool
+    {
+        if ($flag !== null && $flag !== '') {
+            $validated = filter_var($flag, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($validated !== null) {
+                return (bool) $validated && $heartRate >= 1 && $heartRate <= 240;
+            }
+        }
+
+        return $heartRate >= 1 && $heartRate <= 240;
+    }
+
+    public function debugDetailPayload(Request $request)
+    {
+        $mac = $request->input('mac_address');
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
+        
+        if (!$company) {
+            return response(['message' => 'Company not found'], 404);
+        }
+
+        $payload = [
+            'timestamp' => now()->toIso8601String(),
+            'user_id' => $request->user()->id,
+            'mac_address' => $mac,
+            'company' => $company->code,
+            'all_input' => $request->all(),
+            'raw_content' => $request->getContent(),
+            'metric_fields_present' => [
+                'user_activity' => !is_null($request->input('user_activity')),
+                'user_sleep' => !is_null($request->input('user_sleep')),
+                'user_stress' => !is_null($request->input('user_stress')),
+                'user_spo2' => !is_null($request->input('user_spo2')),
+                'user_heart_rate_max' => !is_null($request->input('user_heart_rate_max')),
+                'user_heart_rate_resting' => !is_null($request->input('user_heart_rate_resting')),
+                'user_heart_rate_manual' => !is_null($request->input('user_heart_rate_manual')),
+                // Alternative field names
+                'data_activity' => !is_null($request->input('data_activity')),
+                'data_sleep' => !is_null($request->input('data_sleep')),
+                'data_stress' => !is_null($request->input('data_stress')),
+                'data_spo2' => !is_null($request->input('data_spo2')),
+                'data_heart_rate_max' => !is_null($request->input('data_heart_rate_max')),
+                'data_heart_rate_resting' => !is_null($request->input('data_heart_rate_resting')),
+                'data_heart_rate_manual' => !is_null($request->input('data_heart_rate_manual')),
+            ],
+            'sample_data' => [
+                'user_heart_rate_max' => Str::limit($request->input('user_heart_rate_max', ''), 200),
+                'user_heart_rate_resting' => Str::limit($request->input('user_heart_rate_resting', ''), 200),
+                'user_heart_rate_manual' => Str::limit($request->input('user_heart_rate_manual', ''), 200),
+            ],
+        ];
+
+        \Log::channel('miband-debug')->info('Mi Band Detail Payload Debug', $payload);
+
+        return response([
+            'message' => 'Payload logged successfully',
+            'device' => $mac,
+            'metric_count' => array_sum($payload['metric_fields_present']),
+        ]);
     }
 }
 
