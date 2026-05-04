@@ -52,6 +52,7 @@ Agar update bisa dari jauh tanpa SSH deploy manual setiap kali:
 1. Pasang **GitHub self-hosted runner** di server ini (sekali saja).
 2. Pastikan repo ini sudah ada workflow:
    - `.github/workflows/deploy.yml`
+   - workflow memakai runner label: `self-hosted, savera-prod`
 3. Saat ada `push` ke branch `main`, workflow akan:
    - menjalankan `scripts/deploy_api.ps1`
    - pull latest code
@@ -80,6 +81,21 @@ Jika butuh:
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/deploy_all.ps1
 ```
+
+### Setup runner (sekali saja, admin PowerShell)
+
+1. Dari GitHub repo `lulusbagos/api_savera_2026`, buka:
+   - `Settings` -> `Actions` -> `Runners` -> `New self-hosted runner`
+2. Copy **runner token** (token ini biasanya berlaku singkat).
+3. Jalankan:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install_github_runner.ps1 `
+  -RepoUrl "https://github.com/lulusbagos/api_savera_2026" `
+  -RunnerToken "PASTE_TOKEN_DARI_GITHUB"
+```
+
+Setelah sukses, runner service akan aktif terus. Mulai saat itu Anda cukup `git push` ke `main` untuk deploy otomatis.
 
 ## Learning Laravel
 

@@ -14,7 +14,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: [self-hosted, savera-prod]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
