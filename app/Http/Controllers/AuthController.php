@@ -131,29 +131,39 @@ class AuthController extends Controller
             $this->normalizeCompanyCode($prefixCompanyCode),
         ]));
         $companyIds = $this->resolveCompanyIdsByCodes($companyCodes);
+        $companyScopes = ! empty($companyIds) ? [$companyIds, []] : [[]];
 
         // If input contains @, treat as email
         if (str_contains($input, '@')) {
-            return User::query()
-                ->when(! empty($companyIds), function ($query) use ($companyIds) {
-                    $query->whereIn('company_id', $companyIds);
-                })
-                ->whereRaw('LOWER(email) = ?', [strtolower($input)])
-                ->first();
+            foreach ($companyScopes as $scopeCompanyIds) {
+                $user = User::query()
+                    ->when(! empty($scopeCompanyIds), function ($query) use ($scopeCompanyIds) {
+                        $query->whereIn('company_id', $scopeCompanyIds);
+                    })
+                    ->whereRaw('LOWER(email) = ?', [strtolower($input)])
+                    ->first();
+                if ($user) {
+                    return $user;
+                }
+            }
+
+            return null;
         }
 
         // Fallback for username-like identifiers from mobile (e.g. UDU24011950928).
-        $directUser = User::query()
-            ->when(! empty($companyIds), function ($query) use ($companyIds) {
-                $query->whereIn('company_id', $companyIds);
-            })
-            ->where(function ($query) use ($input) {
-                $query->whereRaw('LOWER(name) = ?', [strtolower($input)])
-                    ->orWhereRaw('LOWER(email) = ?', [strtolower($input)]);
-            })
-            ->first();
-        if ($directUser) {
-            return $directUser;
+        foreach ($companyScopes as $scopeCompanyIds) {
+            $directUser = User::query()
+                ->when(! empty($scopeCompanyIds), function ($query) use ($scopeCompanyIds) {
+                    $query->whereIn('company_id', $scopeCompanyIds);
+                })
+                ->where(function ($query) use ($input) {
+                    $query->whereRaw('LOWER(name) = ?', [strtolower($input)])
+                        ->orWhereRaw('LOWER(email) = ?', [strtolower($input)]);
+                })
+                ->first();
+            if ($directUser) {
+                return $directUser;
+            }
         }
 
         $nikCandidates = array_values(array_unique(array_filter([
@@ -162,18 +172,20 @@ class AuthController extends Controller
         ], static fn ($value) => trim((string) $value) !== '')));
 
         // Otherwise, treat as NIK (employee code) and find user via employee.
-        $employee = Employee::query()
-            ->when(! empty($companyIds), function ($query) use ($companyIds) {
-                $query->whereIn('company_id', $companyIds);
-            })
-            ->whereIn('code', $nikCandidates)
-            ->whereNotNull('user_id')
-            ->orderByDesc('status')
-            ->orderByRaw('CASE WHEN device_id IS NULL THEN 1 ELSE 0 END')
-            ->orderBy('id')
-            ->first();
-        if ($employee && $employee->user_id) {
-            return User::where('id', $employee->user_id)->first();
+        foreach ($companyScopes as $scopeCompanyIds) {
+            $employee = Employee::query()
+                ->when(! empty($scopeCompanyIds), function ($query) use ($scopeCompanyIds) {
+                    $query->whereIn('company_id', $scopeCompanyIds);
+                })
+                ->whereIn('code', $nikCandidates)
+                ->whereNotNull('user_id')
+                ->orderByDesc('status')
+                ->orderByRaw('CASE WHEN device_id IS NULL THEN 1 ELSE 0 END')
+                ->orderBy('id')
+                ->first();
+            if ($employee && $employee->user_id) {
+                return User::where('id', $employee->user_id)->first();
+            }
         }
 
         return null;
