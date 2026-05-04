@@ -17,6 +17,10 @@ class MobileNotification extends Model
         'username',
         'title',
         'message_html',
+        'source_type',
+        'source_ref',
+        'source_event_at',
+        'payload_json',
         'status',
         'read_at',
         'published_at',
@@ -28,6 +32,8 @@ class MobileNotification extends Model
             'status' => 'integer',
             'read_at' => 'datetime',
             'published_at' => 'datetime',
+            'source_event_at' => 'datetime',
+            'payload_json' => 'array',
         ];
     }
 }

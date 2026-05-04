@@ -65,8 +65,25 @@ Route::get('app/score/{company?}/{employee?}', function () {
 
 Route::get('app/article/{company?}/{employee?}', function ($company = 0, $employee = 0) {
     try {
-        $url = "https://savera_admin.idcapps.net/app/article/{$company}/{$employee}";
-        exit(file_get_contents($url));
+        $type = request('type', 'Zona Operator Pintar');
+        $id   = request('id');
+        $url  = "https://savera_admin.idcapps.net/app/article/{$company}/{$employee}";
+        $url .= $id ? "/{$id}" : ('?type=' . urlencode($type));
+
+        $context = stream_context_create([
+            'http' => [
+                'header' => "Cache-Control: no-cache\r\nPragma: no-cache\r\n",
+                'timeout' => 10,
+            ],
+        ]);
+
+        $content = file_get_contents($url, false, $context);
+        if ($content === false) abort(503);
+
+        return response($content, 200)
+            ->header('Content-Type', 'text/html; charset=UTF-8')
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate')
+            ->header('Pragma', 'no-cache');
     } catch (Exception $e) {
         abort(404);
     }

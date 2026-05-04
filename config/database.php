@@ -97,6 +97,22 @@ return [
             'sslmode' => 'prefer',
         ],
 
+        'pgsql_nakula' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_URL_NAKULA'),
+            'host' => env('DB_HOST_NAKULA', '127.0.0.1'),
+            'port' => env('DB_PORT_NAKULA', '5432'),
+            'database' => env('DB_DATABASE_NAKULA', 'nakula'),
+            'username' => env('DB_USERNAME_NAKULA', 'postgres'),
+            'password' => env('DB_PASSWORD_NAKULA', ''),
+            'charset' => env('DB_CHARSET_NAKULA', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE_NAKULA', 'prefer'),
+            'connect_timeout' => env('DB_CONNECT_TIMEOUT_NAKULA', 5),
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),

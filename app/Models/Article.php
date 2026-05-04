@@ -15,8 +15,12 @@ class Article extends Model
         'title',
         'content',
         'type',
+        'category',
+        'author',
+        'published_date',
         'link',
         'image',
+        'image_url',
         'status',
         'company_id',
     ];

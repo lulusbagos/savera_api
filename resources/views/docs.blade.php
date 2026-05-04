@@ -364,6 +364,78 @@
 </style>
 </head>
 <body>
+    <!-- Health Monitor Section -->
+    <section id="health-monitor-demo" style="margin:40px 0;">
+        <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:18px;color:var(--blue);">Health Monitor (Demo)</h2>
+        <div style="overflow-x:auto;">
+            <table id="hm-table" style="width:100%;border-collapse:collapse;background:var(--panel);border-radius:10px;overflow:hidden;">
+                <thead style="background:var(--cyan);color:#fff;">
+                    <tr>
+                        <th style="padding:8px 10px;">NIK</th>
+                        <th style="padding:8px 10px;">Nama</th>
+                        <th style="padding:8px 10px;">Departemen</th>
+                        <th style="padding:8px 10px;">Shift</th>
+                        <th style="padding:8px 10px;">Jam Tidur</th>
+                        <th style="padding:8px 10px;">Detail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>123456</td>
+                        <td>Andi</td>
+                        <td>Produksi</td>
+                        <td>Night</td>
+                        <td>6.2</td>
+                        <td><button class="btn-detail" data-nik="123456" style="padding:4px 10px;border-radius:6px;background:var(--blue);color:#fff;border:none;cursor:pointer;">Lihat Grafik</button></td>
+                    </tr>
+                    <tr>
+                        <td>654321</td>
+                        <td>Budi</td>
+                        <td>HRD</td>
+                        <td>Day</td>
+                        <td>5.7</td>
+                        <td><button class="btn-detail" data-nik="654321" style="padding:4px 10px;border-radius:6px;background:var(--blue);color:#fff;border:none;cursor:pointer;">Lihat Grafik</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="hm-detail-modal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.18);z-index:9999;align-items:center;justify-content:center;">
+            <div style="background:#fff;padding:32px 28px 18px 28px;border-radius:14px;min-width:340px;max-width:98vw;box-shadow:0 8px 32px rgba(0,0,0,0.13);position:relative;">
+                <button id="hm-close-modal" style="position:absolute;top:10px;right:10px;background:var(--red);color:#fff;border:none;border-radius:5px;padding:2px 10px;cursor:pointer;">Tutup</button>
+                <h3 style="font-size:1.1rem;font-weight:600;margin-bottom:12px;color:var(--blue);">Detail Grafik Jam Tidur</h3>
+                <canvas id="hm-sleep-chart" width="420" height="220"></canvas>
+            </div>
+        </div>
+    </section>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script>
+    // Dummy data, ganti dengan fetch file JSON sesuai NIK
+    const sleepData = {
+        '123456': [
+            {x:'2026-04-29T22:00',y:0}, {x:'2026-04-29T23:00',y:1}, {x:'2026-04-30T00:00',y:1}, {x:'2026-04-30T01:00',y:1}, {x:'2026-04-30T02:00',y:0}
+        ],
+        '654321': [
+            {x:'2026-04-29T08:00',y:0}, {x:'2026-04-29T09:00',y:1}, {x:'2026-04-29T10:00',y:1}, {x:'2026-04-29T11:00',y:0}
+        ]
+    };
+    let chart;
+    document.querySelectorAll('.btn-detail').forEach(btn => {
+        btn.onclick = function() {
+            const nik = this.getAttribute('data-nik');
+            const data = sleepData[nik] || [];
+            document.getElementById('hm-detail-modal').style.display = 'flex';
+            if(chart) chart.destroy();
+            chart = new Chart(document.getElementById('hm-sleep-chart').getContext('2d'), {
+                type: 'bar',
+                data: { labels: data.map(d=>d.x), datasets: [{ label: 'Jam Tidur', data: data.map(d=>d.y), backgroundColor: 'rgba(2,132,199,0.7)' }] },
+                options: { scales: { y: { beginAtZero:true, title:{display:true,text:'Tidur (1=ya,0=tidak)'} }, x: { title:{display:true,text:'Jam'} } }, plugins:{ legend:{display:false} } }
+            });
+        }
+    });
+    document.getElementById('hm-close-modal').onclick = function() {
+        document.getElementById('hm-detail-modal').style.display = 'none';
+    };
+    </script>
 
 <!-- PASSWORD GATE -->
 <div id="pw-gate">
@@ -474,6 +546,7 @@
             <a href="#ep-summary" class="sidebar-link"><span class="sl-method m-post">POST</span> Summary (Daily)</a>
             <a href="#ep-detail"  class="sidebar-link"><span class="sl-method m-post">POST</span> Detail (Raw)</a>
             <a href="#ep-ticket"  class="sidebar-link"><span class="sl-method m-get">GET</span>  Ticket</a>
+            <a href="#ep-etiket"  class="sidebar-link"><span class="sl-method m-get">GET</span>  Etiket / Lineup</a>
             <a href="#ep-ranking" class="sidebar-link"><span class="sl-method m-get">GET</span>  Ranking</a>
         </div>
         <div class="sidebar-divider"></div>
@@ -487,6 +560,8 @@
             <a href="#ep-p5m-show"   class="sidebar-link"><span class="sl-method m-get">GET</span>  P5M Questions</a>
             <a href="#ep-p5m-submit" class="sidebar-link"><span class="sl-method m-post">POST</span> P5M Submit</a>
             <a href="#ep-p5m-scores" class="sidebar-link"><span class="sl-method m-get">GET</span>  P5M Scores</a>
+            <a href="#ep-p5m-history" class="sidebar-link"><span class="sl-method m-get">GET</span>  P5M History</a>
+            <a href="#ep-p5m-history-detail" class="sidebar-link"><span class="sl-method m-get">GET</span>  P5M History Detail</a>
         </div>
         <div class="sidebar-divider"></div>
         <div class="sidebar-section">
@@ -997,6 +1072,61 @@
             </div>
         </div>
 
+                <!-- ETIKET -->
+                <div class="ep-card" id="ep-etiket">
+                        <div class="ep-header" onclick="toggleEp(this)">
+                                <span class="method-badge mb-get">GET</span>
+                                <span class="ep-path">/etiket</span>
+                                <span class="ep-title">Lineup Operator / Etiket</span>
+                                <span class="auth-tag auth-private">AUTH</span>
+                                <span class="ep-toggle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+                        </div>
+                        <div class="ep-body">
+                                <p class="ep-desc">Mengambil data lineup operator dari tabel <code style="font-family:'JetBrains Mono',monospace">lineup_operator</code> untuk company aktif. Secara default endpoint akan memfilter data berdasarkan NIK user login. Dapat dipakai untuk layar etiket/lineup di mobile.</p>
+                                <div class="ep-section-title">Query Parameter</div>
+                                <table class="field-table">
+                                        <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Keterangan</th></tr></thead>
+                                        <tbody>
+                                                <tr><td class="field-name">tanggal</td><td><span class="field-type">date</span></td><td><span class="field-req req-opt">Opsional</span></td><td>Format <code style="font-family:'JetBrains Mono',monospace">YYYY-MM-DD</code>. Jika diisi, hanya data tanggal tersebut yang diambil.</td></tr>
+                                                <tr><td class="field-name">nik</td><td><span class="field-type">string</span></td><td><span class="field-req req-opt">Opsional</span></td><td>NIK operator. Jika kosong, backend otomatis pakai NIK user login.</td></tr>
+                                        </tbody>
+                                </table>
+                                <div class="ep-section-title">Response 200</div>
+                                <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button><span class="k">{</span>
+    <span class="n">"message"</span>: <span class="s">"ok"</span>,
+    <span class="n">"data"</span>: <span class="k">[</span>
+        <span class="k">{</span>
+            <span class="n">"no"</span>: <span class="num">12</span>,
+            <span class="n">"tanggal"</span>: <span class="s">"2026-04-27"</span>,
+            <span class="n">"unit"</span>: <span class="s">"HD785-1"</span>,
+            <span class="n">"nik"</span>: <span class="s">"24011950928"</span>,
+            <span class="n">"nama"</span>: <span class="s">"ALFIAN"</span>,
+            <span class="n">"shift"</span>: <span class="s">"SHIFT A"</span>,
+            <span class="n">"keterangan"</span>: <span class="s">"ON DUTY"</span>,
+            <span class="n">"shift_detil"</span>: <span class="s">"SHIFT A"</span>,
+            <span class="n">"pit"</span>: <span class="s">"PIT 1"</span>,
+            <span class="n">"area"</span>: <span class="s">"NORTH"</span>,
+            <span class="n">"region"</span>: <span class="s">"REG-1"</span>,
+            <span class="n">"tipe_unit"</span>: <span class="s">"HAULER"</span>,
+            <span class="n">"model_unit"</span>: <span class="s">"HD785"</span>,
+            <span class="n">"fleet"</span>: <span class="s">"F12"</span>,
+            <span class="n">"no_bus"</span>: <span class="s">"BUS-03"</span>,
+            <span class="n">"company_id"</span>: <span class="num">1</span>,
+            <span class="n">"updated_at"</span>: <span class="s">"2026-04-27T06:20:00.000000Z"</span>
+        <span class="k">}</span>
+    <span class="k">]</span>,
+    <span class="n">"meta"</span>: <span class="k">{</span>
+        <span class="n">"total"</span>: <span class="num">1</span>,
+        <span class="n">"company_id"</span>: <span class="num">1</span>,
+        <span class="n">"nik"</span>: <span class="s">"24011950928"</span>,
+        <span class="n">"tanggal"</span>: <span class="s">"2026-04-27"</span>,
+        <span class="n">"source_connection"</span>: <span class="s">"pgsql"</span>,
+        <span class="n">"table_available"</span>: <span class="num">true</span>
+    <span class="k">}</span>
+<span class="k">}</span></div>
+                        </div>
+                </div>
+
         <!-- RANKING -->
         <div class="ep-card" id="ep-ranking">
             <div class="ep-header" onclick="toggleEp(this)">
@@ -1082,7 +1212,10 @@
     <span class="n">"today_score"</span>: <span class="num">null</span>,          <span class="c">// { "score": 80, "date": "2026-04-24" } jika sudah</span>
     <span class="n">"employee"</span>: <span class="k">{</span>               <span class="c">// data karyawan yang sedang login</span>
       <span class="n">"id"</span>: <span class="num">42</span>, <span class="n">"code"</span>: <span class="s">"EMP001"</span>, <span class="n">"fullname"</span>: <span class="s">"BUDI SANTOSO"</span>,
-      <span class="n">"job"</span>: <span class="s">"Operator"</span>, <span class="n">"company_id"</span>: <span class="num">1</span>, <span class="n">"department_id"</span>: <span class="num">3</span>
+            <span class="n">"job"</span>: <span class="s">"Operator"</span>, <span class="n">"company_id"</span>: <span class="num">1</span>, <span class="n">"company_code"</span>: <span class="s">"UDU"</span>,
+            <span class="n">"company_name"</span>: <span class="s">"PT Unggul Dinamika Utama"</span>, <span class="n">"department_id"</span>: <span class="num">3</span>, <span class="n">"department_name"</span>: <span class="s">"Produksi"</span>,
+            <span class="n">"company"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">1</span>, <span class="n">"code"</span>: <span class="s">"UDU"</span>, <span class="n">"name"</span>: <span class="s">"PT Unggul Dinamika Utama"</span> <span class="k">}</span>,
+            <span class="n">"department"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">3</span>, <span class="n">"name"</span>: <span class="s">"Produksi"</span> <span class="k">}</span>
     <span class="k">}</span>,
     <span class="n">"quiz"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">1</span>, <span class="n">"title"</span>: <span class="s">"Safety Briefing April"</span> <span class="k">}</span>,
     <span class="n">"items"</span>: <span class="k">[</span>
@@ -1099,8 +1232,8 @@
       <span class="k">}</span>
     <span class="k">]</span>,
     <span class="n">"scores"</span>: <span class="k">[</span>
-      <span class="k">{</span> <span class="n">"date"</span>: <span class="s">"2026-04-23"</span>, <span class="n">"score"</span>: <span class="num">90</span> <span class="k">}</span>,
-      <span class="k">{</span> <span class="n">"date"</span>: <span class="s">"2026-04-22"</span>, <span class="n">"score"</span>: <span class="num">80</span> <span class="k">}</span>
+            <span class="k">{</span> <span class="n">"id"</span>: <span class="num">77</span>, <span class="n">"date"</span>: <span class="s">"2026-04-23"</span>, <span class="n">"score"</span>: <span class="num">90</span>, <span class="n">"code"</span>: <span class="s">"EMP001"</span>, <span class="n">"fullname"</span>: <span class="s">"BUDI SANTOSO"</span>, <span class="n">"department"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">3</span>, <span class="n">"name"</span>: <span class="s">"Produksi"</span> <span class="k">}</span>, <span class="n">"company"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">1</span>, <span class="n">"code"</span>: <span class="s">"UDU"</span>, <span class="n">"name"</span>: <span class="s">"PT Unggul Dinamika Utama"</span> <span class="k">}</span> <span class="k">}</span>,
+            <span class="k">{</span> <span class="n">"id"</span>: <span class="num">76</span>, <span class="n">"date"</span>: <span class="s">"2026-04-22"</span>, <span class="n">"score"</span>: <span class="num">80</span>, <span class="n">"code"</span>: <span class="s">"EMP001"</span>, <span class="n">"fullname"</span>: <span class="s">"BUDI SANTOSO"</span>, <span class="n">"department"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">3</span>, <span class="n">"name"</span>: <span class="s">"Produksi"</span> <span class="k">}</span>, <span class="n">"company"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">1</span>, <span class="n">"code"</span>: <span class="s">"UDU"</span>, <span class="n">"name"</span>: <span class="s">"PT Unggul Dinamika Utama"</span> <span class="k">}</span> <span class="k">}</span>
     <span class="k">]</span>
   <span class="k">}</span>
 <span class="k">}</span></div>
@@ -1161,17 +1294,111 @@
                 <span class="ep-toggle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
             </div>
             <div class="ep-body">
-                <p class="ep-desc">Mengambil riwayat skor P5M karyawan (30 hari terakhir). Sama dengan field <code style="font-family:'JetBrains Mono',monospace">scores</code> di response <code>/p5m GET</code>.</p>
+                                <p class="ep-desc">Mengambil ringkasan nilai P5M terbaru yang sudah dikerjakan user login. Tiap row sudah memuat <code style="font-family:'JetBrains Mono',monospace">code</code>, <code style="font-family:'JetBrains Mono',monospace">fullname</code>, <code style="font-family:'JetBrains Mono',monospace">department</code>, dan <code style="font-family:'JetBrains Mono',monospace">company</code>.</p>
                 <div class="ep-section-title">Response 200</div>
                 <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button><span class="k">{</span>
   <span class="n">"message"</span>: <span class="s">"ok"</span>,
   <span class="n">"data"</span>: <span class="k">[</span>
-    <span class="k">{</span> <span class="n">"date"</span>: <span class="s">"2026-04-24"</span>, <span class="n">"score"</span>: <span class="num">80</span> <span class="k">}</span>,
-    <span class="k">{</span> <span class="n">"date"</span>: <span class="s">"2026-04-23"</span>, <span class="n">"score"</span>: <span class="num">90</span> <span class="k">}</span>
-  <span class="k">]</span>
+        <span class="k">{</span> <span class="n">"id"</span>: <span class="num">55</span>, <span class="n">"date"</span>: <span class="s">"2026-04-24"</span>, <span class="n">"score"</span>: <span class="num">80</span>, <span class="n">"code"</span>: <span class="s">"EMP001"</span>, <span class="n">"fullname"</span>: <span class="s">"BUDI SANTOSO"</span>, <span class="n">"department"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">3</span>, <span class="n">"name"</span>: <span class="s">"Produksi"</span> <span class="k">}</span>, <span class="n">"company"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">1</span>, <span class="n">"code"</span>: <span class="s">"UDU"</span>, <span class="n">"name"</span>: <span class="s">"PT Unggul Dinamika Utama"</span> <span class="k">}</span>, <span class="n">"quiz_title"</span>: <span class="s">"Safety Briefing April"</span> <span class="k">}</span>,
+        <span class="k">{</span> <span class="n">"id"</span>: <span class="num">54</span>, <span class="n">"date"</span>: <span class="s">"2026-04-23"</span>, <span class="n">"score"</span>: <span class="num">90</span>, <span class="n">"code"</span>: <span class="s">"EMP001"</span>, <span class="n">"fullname"</span>: <span class="s">"BUDI SANTOSO"</span>, <span class="n">"department"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">3</span>, <span class="n">"name"</span>: <span class="s">"Produksi"</span> <span class="k">}</span>, <span class="n">"company"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">1</span>, <span class="n">"code"</span>: <span class="s">"UDU"</span>, <span class="n">"name"</span>: <span class="s">"PT Unggul Dinamika Utama"</span> <span class="k">}</span>, <span class="n">"quiz_title"</span>: <span class="s">"Safety Briefing April"</span> <span class="k">}</span>
+    <span class="k">]</span>
+<span class="k">}</span></div>
+                        </div>
+                </div>
+
+                <!-- P5M HISTORY -->
+                <div class="ep-card" id="ep-p5m-history">
+                        <div class="ep-header" onclick="toggleEp(this)">
+                                <span class="method-badge mb-get">GET</span>
+                                <span class="ep-path">/p5m/history</span>
+                                <span class="ep-title">Riwayat P5M Yang Sudah Dikerjakan</span>
+                                <span class="auth-tag auth-private">AUTH</span>
+                                <span class="ep-toggle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+                        </div>
+                        <div class="ep-body">
+                                <p class="ep-desc">Mengambil riwayat P5M yang sudah dikerjakan oleh user login. Endpoint ini mendukung filter tanggal dan pagination ringan via query string, serta menyertakan summary skor untuk data yang sedang ditampilkan.</p>
+                                <div class="ep-section-title">Query Parameter</div>
+                                <table class="field-table">
+                                    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Keterangan</th></tr></thead>
+                                    <tbody>
+                                        <tr><td class="field-name">from</td><td><span class="field-type">date</span></td><td><span class="field-req req-opt">Opsional</span></td><td>Tanggal awal format <code style="font-family:'JetBrains Mono',monospace">YYYY-MM-DD</code></td></tr>
+                                        <tr><td class="field-name">to</td><td><span class="field-type">date</span></td><td><span class="field-req req-opt">Opsional</span></td><td>Tanggal akhir format <code style="font-family:'JetBrains Mono',monospace">YYYY-MM-DD</code></td></tr>
+                                        <tr><td class="field-name">limit</td><td><span class="field-type">integer</span></td><td><span class="field-req req-opt">Opsional</span></td><td>Jumlah data per halaman, default 30, max 100</td></tr>
+                                        <tr><td class="field-name">page</td><td><span class="field-type">integer</span></td><td><span class="field-req req-opt">Opsional</span></td><td>Nomor halaman, default 1</td></tr>
+                                    </tbody>
+                                </table>
+                                <div class="ep-section-title">Response 200</div>
+                                <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button><span class="k">{</span>
+    <span class="n">"message"</span>: <span class="s">"ok"</span>,
+    <span class="n">"data"</span>: <span class="k">[</span>
+        <span class="k">{</span>
+            <span class="n">"id"</span>: <span class="num">55</span>,
+            <span class="n">"date"</span>: <span class="s">"2026-04-24"</span>,
+            <span class="n">"score"</span>: <span class="num">80</span>,
+            <span class="n">"status"</span>: <span class="num">1</span>,
+            <span class="n">"code"</span>: <span class="s">"EMP001"</span>,
+            <span class="n">"fullname"</span>: <span class="s">"BUDI SANTOSO"</span>,
+            <span class="n">"job"</span>: <span class="s">"Operator"</span>,
+            <span class="n">"company"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">1</span>, <span class="n">"code"</span>: <span class="s">"UDU"</span>, <span class="n">"name"</span>: <span class="s">"PT Unggul Dinamika Utama"</span> <span class="k">}</span>,
+            <span class="n">"department"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">3</span>, <span class="n">"name"</span>: <span class="s">"Produksi"</span> <span class="k">}</span>,
+            <span class="n">"quiz"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">1</span>, <span class="n">"title"</span>: <span class="s">"Safety Briefing April"</span> <span class="k">}</span>,
+            <span class="n">"created_at"</span>: <span class="s">"2026-04-24T07:00:00.000Z"</span>
+        <span class="k">}</span>
+    <span class="k">]</span>,
+    <span class="n">"meta"</span>: <span class="k">{</span> <span class="n">"page"</span>: <span class="num">1</span>, <span class="n">"limit"</span>: <span class="num">30</span>, <span class="n">"total"</span>: <span class="num">12</span>, <span class="n">"last_page"</span>: <span class="num">1</span>, <span class="n">"from"</span>: <span class="num">null</span>, <span class="n">"to"</span>: <span class="num">null</span> <span class="k">}</span>,
+    <span class="n">"summary"</span>: <span class="k">{</span> <span class="n">"total_records"</span>: <span class="num">12</span>, <span class="n">"average_score"</span>: <span class="num">82.5</span>, <span class="n">"highest_score"</span>: <span class="num">100</span>, <span class="n">"lowest_score"</span>: <span class="num">25</span> <span class="k">}</span>
 <span class="k">}</span></div>
             </div>
         </div>
+
+                <div class="ep-card" id="ep-p5m-history-detail">
+                        <div class="ep-header" onclick="toggleEp(this)">
+                                <span class="method-badge mb-get">GET</span>
+                                <span class="ep-path">/p5m/history/<span>{id}</span></span>
+                                <span class="ep-title">Detail Histori P5M</span>
+                                <span class="auth-tag auth-private">AUTH</span>
+                                <span class="ep-toggle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+                        </div>
+                        <div class="ep-body">
+                            <p class="ep-desc">Mengambil detail satu histori P5M yang sudah dikerjakan, termasuk daftar jawaban per soal, jawaban benar, jawaban user, poin tiap soal, dan statistik benar/salah.</p>
+                                <div class="ep-section-title">URL Parameter</div>
+                                <table class="field-table">
+                                        <thead><tr><th>Parameter</th><th>Type</th><th>Keterangan</th></tr></thead>
+                                        <tbody><tr><td class="field-name">id</td><td><span class="field-type">integer</span></td><td>ID histori dari <code style="font-family:'JetBrains Mono',monospace">/p5m/history</code> atau <code style="font-family:'JetBrains Mono',monospace">/p5m/scores</code></td></tr></tbody>
+                                </table>
+                                <div class="ep-section-title">Response 200</div>
+                                <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button><span class="k">{</span>
+    <span class="n">"message"</span>: <span class="s">"ok"</span>,
+    <span class="n">"data"</span>: <span class="k">{</span>
+        <span class="n">"id"</span>: <span class="num">55</span>,
+        <span class="n">"date"</span>: <span class="s">"2026-04-24"</span>,
+        <span class="n">"score"</span>: <span class="num">80</span>,
+        <span class="n">"code"</span>: <span class="s">"EMP001"</span>,
+        <span class="n">"fullname"</span>: <span class="s">"BUDI SANTOSO"</span>,
+        <span class="n">"company"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">1</span>, <span class="n">"code"</span>: <span class="s">"UDU"</span>, <span class="n">"name"</span>: <span class="s">"PT Unggul Dinamika Utama"</span> <span class="k">}</span>,
+        <span class="n">"department"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">3</span>, <span class="n">"name"</span>: <span class="s">"Produksi"</span> <span class="k">}</span>,
+        <span class="n">"quiz"</span>: <span class="k">{</span> <span class="n">"id"</span>: <span class="num">1</span>, <span class="n">"title"</span>: <span class="s">"Safety Briefing April"</span> <span class="k">}</span>,
+        <span class="n">"summary"</span>: <span class="k">{</span> <span class="n">"total_questions"</span>: <span class="num">4</span>, <span class="n">"correct_answers"</span>: <span class="num">3</span>, <span class="n">"wrong_answers"</span>: <span class="num">1</span>, <span class="n">"earned_points"</span>: <span class="num">75</span> <span class="k">}</span>,
+        <span class="n">"answers"</span>: <span class="k">[</span>
+            <span class="k">{</span>
+                <span class="n">"id"</span>: <span class="num">201</span>,
+                <span class="n">"item_id"</span>: <span class="num">10</span>,
+                <span class="n">"seq"</span>: <span class="num">1</span>,
+                <span class="n">"question"</span>: <span class="s">"APD wajib digunakan saat bekerja di area tambang adalah..."</span>,
+                <span class="n">"correct_answer"</span>: <span class="s">"A"</span>,
+                <span class="n">"selected_answer"</span>: <span class="s">"B"</span>,
+                <span class="n">"is_correct"</span>: <span class="num">false</span>,
+                <span class="n">"point"</span>: <span class="num">0</span>,
+                <span class="n">"options"</span>: <span class="k">[</span>
+                    <span class="k">{</span> <span class="n">"key"</span>: <span class="s">"A"</span>, <span class="n">"label"</span>: <span class="s">"Helm safety, rompi, sepatu safety"</span> <span class="k">}</span>,
+                    <span class="k">{</span> <span class="n">"key"</span>: <span class="s">"B"</span>, <span class="n">"label"</span>: <span class="s">"Helm saja"</span> <span class="k">}</span>
+                <span class="k">]</span>
+            <span class="k">}</span>
+        <span class="k">]</span>
+    <span class="k">}</span>
+<span class="k">}</span></div>
+                        </div>
+                </div>
 
         <!-- ══════════════════════ NOTIFICATIONS ════════════════════════ -->
         <div class="section-label green" id="notifications"><span class="sl-dot"></span>Notifications</div>
@@ -1530,6 +1757,87 @@
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                     <div><strong>Tip Upload Offline:</strong> Untuk <code>/detail</code> dan <code>/summary</code>, simpan payload ke local database jika request gagal. Sertakan <code>device_time</code> yang akurat dari waktu perangkat saat pengukuran, bukan saat pengiriman. Server menggunakan <code>device_time</code> untuk menentukan tanggal data.</div>
                 </div>
+            </div>
+        </div>
+
+        <div class="section-label green" id="network-monitoring"><span class="sl-dot"></span>Network Monitoring</div>
+
+        <div class="ep-card" id="ep-network-status">
+            <div class="ep-header" onclick="toggleEp(this)">
+                <span class="method-badge mb-get">GET</span>
+                <span class="ep-path">/api/network-status</span>
+                <span class="ep-title">Ambil status jaringan terakhir berdasarkan MAC</span>
+                <span class="auth-tag auth-private">Auth: Bearer</span>
+                <span class="ep-toggle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+            </div>
+            <div class="ep-body">
+                <p class="ep-desc">Mengembalikan data network report terakhir dari perangkat user berdasar header <code>mac</code>.</p>
+
+                <div class="ep-section-title">Headers</div>
+                <div class="hdr-row"><span class="hdr-key">Authorization</span><span class="hdr-val">Bearer &lt;token&gt;</span><span class="field-req req-yes">Required</span></div>
+                <div class="hdr-row"><span class="hdr-key">mac</span><span class="hdr-val">AA:BB:CC:DD:EE:FF</span><span class="field-req req-yes">Required</span></div>
+
+                <div class="ep-section-title">Contoh Response 200</div>
+                <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>{
+  "status": "success",
+  "data": {
+    "mac_address": "AA:BB:CC:DD:EE:FF",
+    "network_type": "wifi",
+    "is_metered": false,
+    "downlink_mbps": 22.4,
+    "uplink_mbps": 11.8,
+    "rtt_ms": 35,
+    "device_signal_level": -61,
+    "device_time": "2026-04-30 14:55:12",
+    "created_at": "2026-04-30T14:55:15+08:00"
+  }
+}</div>
+            </div>
+        </div>
+
+        <div class="ep-card post-card" id="ep-network-report">
+            <div class="ep-header" onclick="toggleEp(this)">
+                <span class="method-badge mb-post">POST</span>
+                <span class="ep-path">/api/network-report</span>
+                <span class="ep-title">Kirim telemetry kualitas koneksi dari mobile</span>
+                <span class="auth-tag auth-private">Auth: Bearer</span>
+                <span class="ep-toggle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+            </div>
+            <div class="ep-body">
+                <p class="ep-desc">Simpan data kualitas jaringan user ke tabel <code>network_reports</code> untuk monitoring dashboard dan alert.</p>
+
+                <div class="ep-section-title">Body JSON</div>
+                <table class="field-table">
+                    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Keterangan</th></tr></thead>
+                    <tbody>
+                        <tr><td class="field-name">mac_address</td><td><span class="field-type">string</span></td><td><span class="field-req req-yes">Yes</span></td><td>MAC perangkat (format bebas, server normalisasi)</td></tr>
+                        <tr><td class="field-name">network_type</td><td><span class="field-type">string</span></td><td><span class="field-req req-yes">Yes</span></td><td>Contoh: <code>wifi</code>, <code>cellular</code>, <code>public</code>, <code>local</code></td></tr>
+                        <tr><td class="field-name">is_metered</td><td><span class="field-type">boolean</span></td><td><span class="field-req req-yes">Yes</span></td><td>Apakah koneksi berbayar/terbatas kuota</td></tr>
+                        <tr><td class="field-name">downlink_mbps</td><td><span class="field-type">numeric</span></td><td><span class="field-req req-yes">Yes</span></td><td>Kecepatan download (Mbps)</td></tr>
+                        <tr><td class="field-name">uplink_mbps</td><td><span class="field-type">numeric</span></td><td><span class="field-req req-yes">Yes</span></td><td>Kecepatan upload (Mbps)</td></tr>
+                        <tr><td class="field-name">rtt_ms</td><td><span class="field-type">numeric</span></td><td><span class="field-req req-yes">Yes</span></td><td>Round-trip time / latency (ms)</td></tr>
+                        <tr><td class="field-name">device_signal_level</td><td><span class="field-type">integer</span></td><td><span class="field-req req-yes">Yes</span></td><td>Kekuatan sinyal dari device</td></tr>
+                        <tr><td class="field-name">device_time</td><td><span class="field-type">datetime</span></td><td><span class="field-req req-opt">Optional</span></td><td>Waktu device saat capture data</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="ep-section-title">Contoh Request</div>
+                <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>{
+  "mac_address": "AA:BB:CC:DD:EE:FF",
+  "network_type": "wifi",
+  "is_metered": false,
+  "downlink_mbps": 28.7,
+  "uplink_mbps": 13.2,
+  "rtt_ms": 31,
+  "device_signal_level": -58,
+  "device_time": "2026-04-30 15:01:27"
+}</div>
+
+                <div class="ep-section-title">Contoh Response 200</div>
+                <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button>{
+  "status": "success",
+  "message": "Network report stored"
+}</div>
             </div>
         </div>
 

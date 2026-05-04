@@ -17,5 +17,10 @@ class Department extends Model
         'description',
         'status',
         'company_id',
+        'external_id',
+        'source_type',
+        'is_api_managed',
+        'last_synced_at',
+        'sync_payload',
     ];
 }

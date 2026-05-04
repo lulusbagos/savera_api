@@ -18,10 +18,17 @@ class StoreUserMetricsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public int $tries = 5;
+
     private const CACHE_STORE = 'file';
     private const CACHE_TTL_SECONDS = 86400;
     private const WRITE_LOCK_SECONDS = 15;
     private const WRITE_LOCK_WAIT_SECONDS = 5;
+
+    public function backoff(): array
+    {
+        return [1, 2, 5, 10, 20];
+    }
 
     /**
      * @param array<int, array{path: string, contents: string}> $files
@@ -38,6 +45,7 @@ class StoreUserMetricsJob implements ShouldQueue
         $successfulWrites = 0;
         $failedWrites = 0;
         $durations = [];
+        $failedPaths = [];
 
         foreach ($this->files as $file) {
             $start = microtime(true);
@@ -52,9 +60,12 @@ class StoreUserMetricsJob implements ShouldQueue
                     'duration_ms' => $duration,
                 ]);
 
+                // Tetap rekam durasi write-check meskipun payload tidak berubah,
+                // agar panel "Storage Write Speed" tetap punya data realtime.
+                $durations[] = $duration;
+
                 if ($stored) {
                     $successfulWrites++;
-                    $durations[] = $duration;
                 }
             } catch (Throwable $e) {
                 Log::error('Failed storing user metrics', [
@@ -64,10 +75,17 @@ class StoreUserMetricsJob implements ShouldQueue
                 ]);
 
                 $failedWrites++;
+                $failedPaths[] = (string) ($file['path'] ?? '');
             }
         }
 
         $this->recordStorageMetrics($successfulWrites, $failedWrites, $durations);
+
+        if ($failedWrites > 0) {
+            throw new \RuntimeException(
+                'Metric write failed for ' . $failedWrites . ' file(s): ' . implode(', ', array_slice($failedPaths, 0, 3))
+            );
+        }
     }
 
     /**
@@ -105,7 +123,7 @@ class StoreUserMetricsJob implements ShouldQueue
                 'message' => $e->getMessage(),
             ]);
 
-            return false;
+            throw $e;
         }
     }
 

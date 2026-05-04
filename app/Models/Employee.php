@@ -13,6 +13,7 @@ class Employee extends Model
 
     protected $fillable = [
         'code',
+        'external_employee_id',
         'fullname',
         'email',
         'phone',
@@ -32,5 +33,13 @@ class Employee extends Model
         'user_id',
         'device_id',
         'status',
+        'source_type',
+        'is_api_managed',
+        'external_department_name',
+        'external_position_name',
+        'external_status',
+        'allow_manual_override',
+        'synced_at',
+        'sync_payload',
     ];
 }

@@ -50,5 +50,13 @@ class Summary extends Model
         'is_fit1',
         'is_fit2',
         'is_fit3',
+        'fit_to_work_q1',
+        'fit_to_work_q2',
+        'fit_to_work_q3',
+        'fit_to_work_submitted_at',
+    ];
+
+    protected $casts = [
+        'fit_to_work_submitted_at' => 'datetime',
     ];
 }

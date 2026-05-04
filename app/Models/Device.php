@@ -17,6 +17,7 @@ class Device extends Model
         'mac_address',
         'auth_key',
         'serial_number',
+        'external_device_id',
         'license_number',
         'app_version',
         'os_name',
@@ -26,6 +27,9 @@ class Device extends Model
         'phone_model',
         'phone_product',
         'is_active',
+        'source_type',
+        'is_api_managed',
+        'last_synced_at',
         'company_id',
     ];
 }

@@ -1,20 +1,19 @@
-/.phpunit.cache
+/phpunit.cache
 /node_modules
 /public/build
 /public/hot
 /public/storage
-/storage/*.key
-/storage/logs/*
-/storage/framework/cache/*
-/storage/framework/sessions/*
-/storage/framework/views/*
-/storage/app/avatar/*.png
-/storage/app/data_*/**/*.json
-/storage/my-spreadsheet.json
 /vendor
+
+# Environment files
 .env
 .env.backup
 .env.production
+
+# IDE / local metadata
+/.fleet
+/.idea
+/.vscode
 .phpactor.json
 .phpunit.result.cache
 Homestead.json
@@ -22,33 +21,28 @@ Homestead.yaml
 auth.json
 npm-debug.log
 yarn-error.log
-/.fleet
-/.idea
-/.vscode
 
+# Laravel runtime
+/storage/*.key
+/storage/logs/*
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
 /bootstrap/cache/*.php
 
-/logs/queue-worker.log
+# App storage artifacts
+/storage/app/avatar/*.png
+/storage/app/data_*/**/*.json
+/storage/app/mobile_metrics/**/*.json
+/storage/framework/testing/disks/mobile_metrics/**/*.json
+/storage/my-spreadsheet.json
 
-# Backup & temp files
+# Operational local logs
+/logs/*.log
+/logs/*.json
+
+# Backup / temporary files
 *.bak
 *.bak2
 *.bak3
-10MB)
-/resources/views/test_write.txt
-
-# Backup & temp files
-*.bak
-*.bak2
-*.bak3
-/10MB)
-/resources/views/test_write.txt
-/app/Http/Controllers/bacupapicontroler.txt
-
-# Backup and temp
-*.bak
-*.bak2
-*.bak3
-/10MB)
-/resources/views/test_write.txt
 /app/Http/Controllers/bacupapicontroler.txt

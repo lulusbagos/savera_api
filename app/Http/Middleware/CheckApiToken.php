@@ -16,7 +16,13 @@ class CheckApiToken
     public function handle(Request $request, Closure $next): Response
     {
         // Bypass untuk endpoint publik yang tidak butuh header Accept
-        if ($request->is('api/health') || $request->is('api/login') || $request->is('api/register')) {
+        if (
+            $request->is('api/health') ||
+            $request->is('api/login') ||
+            $request->is('api/register') ||
+            $request->is('api/article-image') ||
+            $request->is('api/article-image/*')
+        ) {
             return $next($request);
         }
 

@@ -13,8 +13,13 @@ class Company extends Model
 
     protected $fillable = [
         'code',
+        'external_id',
         'name',
         'description',
         'status',
+        'source_type',
+        'is_api_managed',
+        'last_synced_at',
+        'sync_payload',
     ];
 }

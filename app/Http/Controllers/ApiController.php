@@ -1119,6 +1119,12 @@ class ApiController extends Controller
         $req['send_time'] = Carbon::now()->toTimeString();
         $req['sleep_type'] = $request->input('sleep_type', 'night') ?? 'night';
         $this->applyFitToWorkPayload($request, $req);
+        $sleepFromMetricPayload = $this->resolveSleepMinutesFromMetricPayload($request->input('user_sleep', $request->input('data_sleep')));
+        $reportedSleepMinutes = max(0, (int) round((float) ($req['sleep'] ?? 0)));
+        if ($sleepFromMetricPayload > 0 && ($reportedSleepMinutes <= 0 || abs($reportedSleepMinutes - $sleepFromMetricPayload) >= 45)) {
+            $req['sleep'] = $sleepFromMetricPayload;
+        }
+        $req['sleep_text'] = $this->minutesToSleepText((int) ($req['sleep'] ?? 0));
 
         $heartRate = (float) ($req['heart_rate'] ?? 0);
         $heartRateValid = $this->resolveHeartRateValidity($request->input('heart_rate_valid'), $heartRate);
@@ -1237,6 +1243,106 @@ class ApiController extends Controller
         }
 
         return $heartRate >= 1 && $heartRate <= 240;
+    }
+
+    private function resolveSleepMinutesFromMetricPayload(mixed $payload): int
+    {
+        if ($payload === null || $payload === '') {
+            return 0;
+        }
+
+        $rows = [];
+        if (is_string($payload)) {
+            try {
+                $decoded = json_decode(trim($payload), true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                return 0;
+            }
+            if (!is_array($decoded)) {
+                return 0;
+            }
+            $rows = array_is_list($decoded) ? $decoded : (isset($decoded['data']) && is_array($decoded['data']) ? $decoded['data'] : [$decoded]);
+        } elseif (is_array($payload)) {
+            $rows = array_is_list($payload) ? $payload : (isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : [$payload]);
+        } else {
+            return 0;
+        }
+
+        $totalSeconds = 0;
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $start = $this->normalizeMetricTs($row['sleepStart'] ?? $row['sleep_start'] ?? $row['start'] ?? 0);
+            $end = $this->normalizeMetricTs($row['sleepEnd'] ?? $row['sleep_end'] ?? $row['end'] ?? 0);
+            $interval = ($start > 0 && $end > $start) ? ($end - $start) : 0;
+
+            $light = $this->normalizeDurationToSeconds($row['lightSleepDuration'] ?? $row['light_sleep_duration'] ?? $row['light_sleep'] ?? $row['light'] ?? 0, $interval);
+            $deep = $this->normalizeDurationToSeconds($row['deepSleepDuration'] ?? $row['deep_sleep_duration'] ?? $row['deep_sleep'] ?? $row['deep'] ?? 0, $interval);
+            $rem = $this->normalizeDurationToSeconds($row['remSleepDuration'] ?? $row['rem_sleep_duration'] ?? $row['rem_sleep'] ?? $row['rem'] ?? 0, $interval);
+            $awake = $this->normalizeDurationToSeconds($row['awakeSleepDuration'] ?? $row['awake_sleep_duration'] ?? $row['awake_sleep'] ?? $row['awake'] ?? 0, $interval);
+            $total = $this->normalizeDurationToSeconds($row['totalSleepDuration'] ?? $row['total_sleep_duration'] ?? $row['total_sleep'] ?? $row['duration'] ?? $row['duration_seconds'] ?? 0, $interval);
+
+            $stage = $light + $deep + $rem + $awake;
+            $effective = $total > 0 ? $total : $stage;
+            if ($effective <= 0 && $interval > 0) {
+                $effective = $interval;
+            }
+            if ($interval > 0 && $effective > (int) round($interval * 1.5)) {
+                $effective = $interval;
+            }
+            $totalSeconds += max(0, $effective);
+        }
+
+        return (int) round($totalSeconds / 60);
+    }
+
+    private function normalizeDurationToSeconds(mixed $value, int $intervalSeconds): int
+    {
+        if (!is_numeric($value)) {
+            return 0;
+        }
+
+        $duration = (int) round((float) $value);
+        if ($duration <= 0) {
+            return 0;
+        }
+
+        if ($duration < 1000) {
+            $duration *= 60;
+        }
+
+        if ($intervalSeconds > 0 && $duration > (int) round($intervalSeconds * 1.5)) {
+            return $intervalSeconds;
+        }
+
+        return $duration;
+    }
+
+    private function normalizeMetricTs(mixed $value): int
+    {
+        if (!is_numeric($value)) {
+            return 0;
+        }
+        $ts = (int) $value;
+        if ($ts <= 0) {
+            return 0;
+        }
+        if ($ts > 9999999999) {
+            return (int) floor($ts / 1000);
+        }
+        return $ts;
+    }
+
+    private function minutesToSleepText(int $minutes): string
+    {
+        if ($minutes <= 0) {
+            return '-';
+        }
+
+        $hours = intdiv($minutes, 60);
+        $mins = $minutes % 60;
+        return sprintf('%d:%02d', $hours, $mins);
     }
 
     public function debugDetailPayload(Request $request)

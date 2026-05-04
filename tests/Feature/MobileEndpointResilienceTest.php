@@ -15,6 +15,7 @@ use App\Support\MobileIngestRuntime;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\RateLimiter;
@@ -29,6 +30,9 @@ class MobileEndpointResilienceTest extends TestCase
     {
         parent::setUp();
 
+        Cache::flush();
+        File::deleteDirectory(storage_path('framework/cache/data'));
+        File::ensureDirectoryExists(storage_path('framework/cache/data'));
         File::deleteDirectory(storage_path('framework/testing/disks/mobile_metrics'));
         File::ensureDirectoryExists(storage_path('framework/testing/disks/mobile_metrics'));
     }
@@ -46,7 +50,7 @@ class MobileEndpointResilienceTest extends TestCase
             ->assertUnauthorized();
     }
 
-    public function test_summary_rejects_missing_company_header(): void
+    public function test_summary_still_works_without_company_header_when_user_context_exists(): void
     {
         Carbon::setTestNow('2026-03-26 08:00:00');
 
@@ -54,9 +58,9 @@ class MobileEndpointResilienceTest extends TestCase
         Sanctum::actingAs($user);
 
         $this->postJson('/api/summary', $this->summaryPayload($employee->id, $company->id, $department->id, $shift->id, $device->mac_address))
-            ->assertNotFound()
+            ->assertOk()
             ->assertJson([
-                'message' => 'Company not found.',
+                'message' => 'Successfully created',
             ]);
     }
 
@@ -133,14 +137,15 @@ class MobileEndpointResilienceTest extends TestCase
                 'message' => 'Successfully created',
             ]);
 
+        $fileToken = str_pad((string) $employee->user_id, 20, '0', STR_PAD_LEFT);
         $expectedFiles = [
-            'data_activity/2026/03/26/00000000000000000001.json',
-            'data_sleep/2026/03/26/00000000000000000001.json',
-            'data_stress/2026/03/26/00000000000000000001.json',
-            'data_spo2/2026/03/26/00000000000000000001.json',
-            'data_heart_rate_max/2026/03/26/00000000000000000001.json',
-            'data_heart_rate_resting/2026/03/26/00000000000000000001.json',
-            'data_heart_rate_manual/2026/03/26/00000000000000000001.json',
+            "data_activity/2026/03/26/{$fileToken}.json",
+            "data_sleep/2026/03/26/{$fileToken}.json",
+            "data_stress/2026/03/26/{$fileToken}.json",
+            "data_spo2/2026/03/26/{$fileToken}.json",
+            "data_heart_rate_max/2026/03/26/{$fileToken}.json",
+            "data_heart_rate_resting/2026/03/26/{$fileToken}.json",
+            "data_heart_rate_manual/2026/03/26/{$fileToken}.json",
         ];
 
         $this->assertEqualsCanonicalizing($expectedFiles, Storage::disk(MobileIngestRuntime::storageDisk('local'))->allFiles());
@@ -169,7 +174,8 @@ class MobileEndpointResilienceTest extends TestCase
                 'message' => 'Successfully created',
             ]);
 
-        $path = 'data_activity/2026/03/26/00000000000000000001.json';
+        $fileToken = str_pad((string) $employee->user_id, 20, '0', STR_PAD_LEFT);
+        $path = "data_activity/2026/03/26/{$fileToken}.json";
         Storage::disk(MobileIngestRuntime::storageDisk('local'))->assertExists($path);
         $this->assertSame('[]', Storage::disk(MobileIngestRuntime::storageDisk('local'))->get($path));
     }

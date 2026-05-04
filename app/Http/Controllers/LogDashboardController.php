@@ -2,18 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use App\Support\MobileIngestRuntime;
 use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class LogDashboardController extends Controller
 {
     private const CACHE_STORE = 'file';
 
-    public function stream(): JsonResponse
+    public function stream(Request $request): JsonResponse
     {
         $path = $this->resolveLogPath();
 
@@ -63,7 +65,7 @@ class LogDashboardController extends Controller
             } elseif (Str::contains($lower, 'failed storing user metrics')) {
                 $category = 'storage';
                 $summary['storage_errors']++;
-            } elseif (Str::contains($lower, 'metrics stored')) {
+            } elseif (Str::contains($lower, 'metrics stored') || Str::contains($lower, 'metrics unchanged')) {
                 $category = 'storage';
                 $summary['storage_writes']++;
 
@@ -83,6 +85,20 @@ class LogDashboardController extends Controller
         }
 
         $entries = array_slice(array_reverse($entries), 0, 120);
+
+        // Tampilkan error/warning terbaru agar panel "Error & Warning Terbaru"
+        // tidak terus menampilkan incident lama yang sudah ditangani.
+        $windowMinutes = (int) $request->query('window_minutes', 60);
+        $windowMinutes = max(5, min(1440, $windowMinutes));
+        $windowStart = Carbon::now()->subMinutes($windowMinutes);
+        $entries = array_values(array_filter($entries, function (array $entry) use ($windowStart) {
+            try {
+                return Carbon::parse((string) ($entry['time'] ?? ''))->gte($windowStart);
+            } catch (\Throwable $e) {
+                return false;
+            }
+        }));
+
         $storageDurations = array_slice(array_reverse($storageDurations), 0, 60);
         $cache = Cache::store(MobileIngestRuntime::cacheStore(self::CACHE_STORE));
         $requests = $cache->get('recent_requests', []);
@@ -124,6 +140,7 @@ class LogDashboardController extends Controller
             'log_size_mb' => round((@filesize($path) ?: 0) / 1048576, 2),
             'last_log_time' => $lastLogTime,
             'last_error_time' => $lastErrorTime,
+            'window_minutes' => $windowMinutes,
             'error_rate' => $errorRate,
             'refreshed_at' => $now->toDateTimeString(),
             'uptime_seconds' => $uptimeSeconds,
@@ -313,14 +330,24 @@ class LogDashboardController extends Controller
             $mac  = !empty($req['mac']) ? $req['mac'] : ('ip:' . ($req['ip'] ?? 'unknown'));
             $key  = $mac;
             if (!isset($byMac[$key])) {
+                $ip = (string) ($req['ip'] ?? '');
                 $byMac[$key] = [
                     'mac'         => $mac,
                     'user_id'     => $req['user_id'] ?? null,
+                    'user_name'   => null,
+                    'last_ip'     => $ip !== '' ? $ip : null,
+                    'ip_scope'    => $this->classifyIpScope($ip),
+                    'network_type'=> $this->networkTypeFromScope($this->classifyIpScope($ip)),
                     'last_seen'   => $req['time'] ?? null,
                     'last_route'  => $req['route'] ?? $req['uri'] ?? null,
+                    'app_version' => $this->normalizeAppVersion($req['app_version'] ?? null),
+                    'last_upload_at' => null,
+                    'last_upload_route' => null,
                     'last_method' => $req['method'] ?? null,
                     'last_status' => $req['status'] ?? null,
                     'last_ms'     => $req['duration_ms'] ?? null,
+                    'speed_kbps_est' => $req['speed_kbps_est'] ?? null,
+                    'speed_tier'  => $this->speedTierFromMs((float) ($req['duration_ms'] ?? 0)),
                     'request_count' => 0,
                     'error_count'   => 0,
                     'routes'        => [],
@@ -331,10 +358,51 @@ class LogDashboardController extends Controller
             if ($status >= 400) {
                 $byMac[$key]['error_count']++;
             }
+            $currentIp = (string) ($req['ip'] ?? '');
+            if ($currentIp !== '') {
+                $byMac[$key]['last_ip'] = $currentIp;
+                $byMac[$key]['ip_scope'] = $this->classifyIpScope($currentIp);
+                $byMac[$key]['network_type'] = $this->networkTypeFromScope($byMac[$key]['ip_scope']);
+            }
+            $ms = (float) ($req['duration_ms'] ?? 0);
+            if ($ms > 0) {
+                $byMac[$key]['last_ms'] = $ms;
+                $byMac[$key]['speed_tier'] = $this->speedTierFromMs($ms);
+            }
+            if (isset($req['speed_kbps_est']) && $req['speed_kbps_est'] !== null) {
+                $byMac[$key]['speed_kbps_est'] = (float) $req['speed_kbps_est'];
+            }
+            $route = (string) ($req['route'] ?? Str::after($req['uri'] ?? '', '/api/'));
+            if (in_array($route, ['summary', 'detail'], true)) {
+                $byMac[$key]['last_upload_at'] = $req['time'] ?? $byMac[$key]['last_upload_at'];
+                $byMac[$key]['last_upload_route'] = $route;
+                $byMac[$key]['app_version'] = $this->normalizeAppVersion($req['app_version'] ?? $byMac[$key]['app_version']);
+            }
             // Kumpulkan riwayat route unik (max 5)
-            $route = $req['route'] ?? Str::after($req['uri'] ?? '', '/api/');
             if ($route && !in_array($route, $byMac[$key]['routes'], true) && count($byMac[$key]['routes']) < 5) {
                 $byMac[$key]['routes'][] = $route;
+            }
+        }
+
+        $this->attachUserNames($byMac);
+
+        // Merge network report from mobile side (if available).
+        foreach ($byMac as $idx => $row) {
+            $report = $this->resolveMobileNetworkReport(
+                isset($row['user_id']) ? (int) $row['user_id'] : null,
+                (string) ($row['mac'] ?? ''),
+                (string) ($row['last_ip'] ?? '')
+            );
+            if (!empty($report)) {
+                $byMac[$idx]['network_type_mobile'] = $report['network_type'] ?? null;
+                $byMac[$idx]['network_metered_mobile'] = $report['is_metered'] ?? null;
+                $byMac[$idx]['downlink_mbps_mobile'] = $report['downlink_mbps'] ?? null;
+                $byMac[$idx]['uplink_mbps_mobile'] = $report['uplink_mbps'] ?? null;
+                $byMac[$idx]['rtt_ms_mobile'] = $report['rtt_ms'] ?? null;
+                $byMac[$idx]['network_reported_at'] = $report['reported_at'] ?? null;
+                $byMac[$idx]['network_source'] = 'mobile_report';
+            } else {
+                $byMac[$idx]['network_source'] = 'server_estimate';
             }
         }
 
@@ -350,5 +418,125 @@ class LogDashboardController extends Controller
             'showing'      => count($top20),
             'snapshot_at'  => now()->toDateTimeString(),
         ]);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     */
+    private function attachUserNames(array &$rows): void
+    {
+        $userIds = [];
+        foreach ($rows as $row) {
+            $uid = isset($row['user_id']) ? (int) $row['user_id'] : 0;
+            if ($uid > 0) {
+                $userIds[] = $uid;
+            }
+        }
+        $userIds = array_values(array_unique($userIds));
+        if (empty($userIds)) {
+            return;
+        }
+
+        $nameMap = User::query()
+            ->whereIn('id', $userIds)
+            ->pluck('name', 'id')
+            ->all();
+
+        foreach ($rows as &$row) {
+            $uid = isset($row['user_id']) ? (int) $row['user_id'] : 0;
+            if ($uid > 0) {
+                $row['user_name'] = $nameMap[$uid] ?? null;
+            }
+        }
+        unset($row);
+    }
+
+    private function normalizeAppVersion(mixed $value): string
+    {
+        if (!is_string($value)) {
+            return 'N/A';
+        }
+
+        $trimmed = trim($value);
+
+        return $trimmed !== '' ? $trimmed : 'N/A';
+    }
+
+    private function classifyIpScope(string $ip): string
+    {
+        $ip = trim($ip);
+        if ($ip === '') {
+            return 'unknown';
+        }
+
+        // Loopback and localhost aliases.
+        if ($ip === '127.0.0.1' || $ip === '::1') {
+            return 'local';
+        }
+
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+            return 'unknown';
+        }
+
+        $isPrivateOrReserved = !filter_var(
+            $ip,
+            FILTER_VALIDATE_IP,
+            FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+        );
+
+        return $isPrivateOrReserved ? 'local' : 'public';
+    }
+
+    private function networkTypeFromScope(string $scope): string
+    {
+        return match ($scope) {
+            'public' => 'public',
+            'local' => 'wifi/local',
+            default => 'unknown',
+        };
+    }
+
+    private function speedTierFromMs(float $durationMs): string
+    {
+        if ($durationMs <= 0) {
+            return 'unknown';
+        }
+        if ($durationMs <= 180) {
+            return 'very_fast';
+        }
+        if ($durationMs <= 350) {
+            return 'fast';
+        }
+        if ($durationMs <= 700) {
+            return 'medium';
+        }
+
+        return 'slow';
+    }
+
+    private function resolveMobileNetworkReport(?int $userId, string $mac, string $ip): array
+    {
+        $cache = Cache::store(MobileIngestRuntime::cacheStore(self::CACHE_STORE));
+        $keys = [];
+        if ($userId !== null && $userId > 0) {
+            $keys[] = 'mobile_network_report:user:' . $userId;
+        }
+        $mac = trim($mac);
+        if ($mac !== '' && !str_starts_with($mac, 'ip:')) {
+            $keys[] = 'mobile_network_report:mac:' . strtoupper($mac);
+        }
+        $ip = trim($ip);
+        if ($ip !== '') {
+            $keys[] = 'mobile_network_report:ip:' . $ip;
+        }
+
+        foreach ($keys as $key) {
+            $report = $cache->get($key);
+            if (is_array($report) && !empty($report)) {
+                return $report;
+            }
+        }
+
+        return [];
     }
 }

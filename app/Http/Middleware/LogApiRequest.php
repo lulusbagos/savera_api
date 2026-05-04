@@ -44,6 +44,7 @@ class LogApiRequest
 
         $duration = round((microtime(true) - $start) * 1000, 2);
         $shouldLogSuccess = ! $this->isHighVolumeRoute($routeName) || $duration >= self::SLOW_SUCCESS_THRESHOLD_MS;
+        $isHighVolumeRoute = $this->isHighVolumeRoute($routeName);
 
         if ($response->getStatusCode() >= 400) {
             Log::warning('API Request Failed', [
@@ -55,6 +56,10 @@ class LogApiRequest
                 'status' => $response->getStatusCode(),
                 'duration_ms' => $duration,
             ]);
+            $this->storeRecentRequest($request, $duration, $response->getStatusCode(), $mac, $routeName);
+        } elseif ($isHighVolumeRoute) {
+            // Summary/detail harus selalu tercatat ke cache monitor agar app_version, waktu,
+            // dan aktivitas user selalu up to date meskipun request cepat.
             $this->storeRecentRequest($request, $duration, $response->getStatusCode(), $mac, $routeName);
         } elseif ($shouldLogSuccess) {
             Log::info('API Request Success', [
@@ -83,6 +88,12 @@ class LogApiRequest
 
     private function storeRecentRequest(Request $request, float $duration, int $status, ?string $mac, ?string $routeName): void
     {
+        $requestBytes = strlen((string) $request->getContent());
+        $appVersionRaw = $request->input('app_version', $request->header('x-app-version', $request->header('app-version')));
+        $appVersion = is_string($appVersionRaw) ? trim($appVersionRaw) : null;
+        if ($appVersion === '') {
+            $appVersion = null;
+        }
         $entry = [
             'time' => now()->format('Y-m-d H:i:s'),
             'method' => $request->method(),
@@ -92,6 +103,12 @@ class LogApiRequest
             'duration_ms' => $duration,
             'mac' => $mac,
             'ip' => $request->ip(),
+            'user_id' => optional(auth()->user())->id,
+            'app_version' => $appVersion,
+            'request_bytes' => $requestBytes,
+            'speed_kbps_est' => $duration > 0
+                ? round(($requestBytes * 8) / $duration, 2)
+                : null,
         ];
 
         $cache = Cache::store(MobileIngestRuntime::cacheStore(self::CACHE_STORE));
