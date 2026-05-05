@@ -25,6 +25,7 @@ class User extends Authenticatable
         'password',
         'source_type',
         'is_api_managed',
+        'is_sleep_uploader',
         'last_synced_at',
         'last_login_at',
         'last_login_ip',
@@ -51,6 +52,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'is_sleep_uploader' => 'boolean',
             'password' => 'hashed',
         ];
     }

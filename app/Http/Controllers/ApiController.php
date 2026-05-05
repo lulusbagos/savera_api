@@ -64,6 +64,7 @@ class ApiController extends Controller
     private function buildProfilePayload(Company $company, Request $request): ?array
     {
         $user = $request->user()->toArray();
+        $isSleepUploader = $this->isSleepUploaderUser($request->user());
         $employee = Employee::query()
             ->select(['id', 'code', 'fullname', 'department_id', 'mess_id', 'device_id', 'company_id', 'user_id', 'photo', 'job', 'status'])
             ->where('company_id', $company->id)
@@ -75,6 +76,8 @@ class ApiController extends Controller
 
         $employee['department_name'] = (is_null($employee->department_id)) ? null : Department::query()->whereKey($employee->department_id)->value('name');
         $employee['mess_name'] = (is_null($employee->mess_id)) ? null : Mess::query()->whereKey($employee->mess_id)->value('name');
+        $employee['is_sleep_uploader'] = $isSleepUploader ? 1 : 0;
+        $user['is_sleep_uploader'] = $isSleepUploader ? 1 : 0;
         $user['employee'] = $employee->toArray();
         $user['shift'] = Shift::query()->whereKey(1)->first()?->toArray();
         $user['device'] = (is_null($employee->device_id)) ? null : Device::query()->whereKey($employee->device_id)->first()?->toArray();
@@ -874,6 +877,28 @@ class ApiController extends Controller
             ->first();
     }
 
+    private function lockEmployeeByCompanyAndDevice(int $companyId, int $deviceId): ?Employee
+    {
+        return Employee::query()
+            ->select(['id', 'user_id', 'company_id', 'device_id', 'department_id'])
+            ->where('company_id', $companyId)
+            ->where('device_id', $deviceId)
+            ->whereNull('deleted_at')
+            ->orderByDesc('status')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->first();
+    }
+
+    private function isSleepUploaderUser($user): bool
+    {
+        if (! $user || ! Schema::hasColumn('users', 'is_sleep_uploader')) {
+            return false;
+        }
+
+        return filter_var($user->is_sleep_uploader ?? false, FILTER_VALIDATE_BOOLEAN);
+    }
+
     private function logIngestDeviceFailure(Request $request, Company $company, string $source, string $reason, ?Device $device = null, ?Employee $employee = null): void
     {
         LogHelper::logError('Mobile ingest device check failed:', json_encode([
@@ -1081,48 +1106,66 @@ class ApiController extends Controller
 
             try {
                 $result = DB::transaction(function () use ($request, $company, $payloadBuilder, $metricMap, $source) {
-                $device = $this->findDeviceByMac($company->id, (string) $request->input('mac_address'));
-                if (! $device) {
-                    $this->logIngestDeviceFailure($request, $company, $source, 'device_mac_not_found');
-                    return response([
-                        'message' => 'Your device\'s MAC address is unavailable.',
-                    ], 404);
-                }
+                    $device = $this->findDeviceByMac($company->id, (string) $request->input('mac_address'));
+                    if (! $device) {
+                        $this->logIngestDeviceFailure($request, $company, $source, 'device_mac_not_found');
+                        return response([
+                            'message' => 'Your device\'s MAC address is unavailable.',
+                        ], 404);
+                    }
 
-                $employee = $this->lockEmployeeByCompanyAndId($company->id, (int) $request->input('employee_id'));
-                if (! $employee) {
-                    $this->logIngestDeviceFailure($request, $company, $source, 'employee_not_found', $device);
-                    return response([
-                        'message' => 'Employee not found.',
-                    ], 404);
-                }
+                    $isSleepUploader = $this->isSleepUploaderUser($request->user());
+                    if ($isSleepUploader) {
+                        $employee = $this->lockEmployeeByCompanyAndDevice($company->id, (int) $device->id);
+                        if (! $employee) {
+                            $this->logIngestDeviceFailure($request, $company, $source, 'sleep_uploader_device_not_bound', $device);
+                            return response([
+                                'message' => 'Device belum terhubung ke employee. Hubungi admin untuk mapping MAC Address.',
+                            ], 404);
+                        }
+                    } else {
+                        $employee = $this->lockEmployeeByCompanyAndId($company->id, (int) $request->input('employee_id'));
+                        if (! $employee) {
+                            $this->logIngestDeviceFailure($request, $company, $source, 'employee_not_found', $device);
+                            return response([
+                                'message' => 'Employee not found.',
+                            ], 404);
+                        }
 
-                if ((int) ($employee->device_id ?? 0) !== (int) $device->id) {
-                    $this->logIngestDeviceFailure($request, $company, $source, 'device_employee_mismatch', $device, $employee);
+                        if ((int) ($employee->user_id ?? 0) !== (int) ($request->user()?->id ?? 0)) {
+                            $this->logIngestDeviceFailure($request, $company, $source, 'employee_user_mismatch', $device, $employee);
+                            return response([
+                                'message' => 'Akun ini tidak boleh upload data untuk employee lain.',
+                            ], 403);
+                        }
+                    }
 
-                    return response([
-                        'message' => 'Your device is not bound to this employee.',
-                    ], 404);
-                }
+                    if ((int) ($employee->device_id ?? 0) !== (int) $device->id) {
+                        $this->logIngestDeviceFailure($request, $company, $source, 'device_employee_mismatch', $device, $employee);
 
-                if ($employee->user_id === null) {
-                    return response([
-                        'message' => 'User not found.',
-                    ], 404);
-                }
+                        return response([
+                            'message' => 'Your device is not bound to this employee.',
+                        ], 404);
+                    }
 
-                $payload = $payloadBuilder($request, $company, $device, $employee);
-                if (! isset($payload['data'], $payload['file'])) {
-                    return response([
-                        'message' => 'Invalid ingest payload.',
-                    ], 500);
-                }
+                    if ($employee->user_id === null) {
+                        return response([
+                            'message' => 'User not found.',
+                        ], 404);
+                    }
 
-                return [
-                    'data' => $payload['data'],
-                    'file' => $payload['file'],
-                    'source' => $source,
-                ];
+                    $payload = $payloadBuilder($request, $company, $device, $employee);
+                    if (! isset($payload['data'], $payload['file'])) {
+                        return response([
+                            'message' => 'Invalid ingest payload.',
+                        ], 500);
+                    }
+
+                    return [
+                        'data' => $payload['data'],
+                        'file' => $payload['file'],
+                        'source' => $source,
+                    ];
                 });
 
                 if ($result instanceof \Illuminate\Http\JsonResponse || $result instanceof \Illuminate\Http\Response) {
@@ -1155,7 +1198,9 @@ class ApiController extends Controller
     {
         $req = $request->only((new Summary())->getFillable());
         $req['user_id'] = $employee->user_id;
+        $req['employee_id'] = $employee->id;
         $req['company_id'] = $company->id;
+        $req['department_id'] = $employee->department_id;
         $req['device_id'] = $device->id;
         $req['send_date'] = Carbon::now()->toDateString();
         $req['send_time'] = Carbon::now()->toTimeString();
@@ -1229,6 +1274,7 @@ class ApiController extends Controller
             'employee_id',
         ]);
         $req['user_id'] = $employee->user_id;
+        $req['employee_id'] = $employee->id;
         $req['device_id'] = $device->id;
 
         $file = '/'.Str::replace('-', '/', Str::substr($req['device_time'], 0, 10)).'/'.Str::padLeft($req['user_id'], 20, '0').'.json';

@@ -81,8 +81,9 @@ class AuthController extends Controller
                 ], 403);
             }
 
+            $isSleepUploader = $this->isSleepUploader($user);
             $requireBoundDevice = filter_var(env('MOBILE_REQUIRE_BOUND_DEVICE', false), FILTER_VALIDATE_BOOL);
-            if ($requireBoundDevice) {
+            if ($requireBoundDevice && ! $isSleepUploader) {
                 if (is_null($employee->device_id)) {
                     return response([
                         'message' => 'Akun belum aktif di mobile. MAC/device belum didaftarkan.'
@@ -100,6 +101,7 @@ class AuthController extends Controller
             $this->recordLoginAudit($request, $user);
 
             $token = $user->createToken('auth_token')->plainTextToken;
+            $user->is_sleep_uploader = $isSleepUploader;
 
             return response([
                 'user' => $user,
@@ -265,6 +267,15 @@ class AuthController extends Controller
         if ($audit !== []) {
             $user->forceFill($audit)->save();
         }
+    }
+
+    private function isSleepUploader(User $user): bool
+    {
+        if (! Schema::hasColumn('users', 'is_sleep_uploader')) {
+            return false;
+        }
+
+        return filter_var($user->is_sleep_uploader ?? false, FILTER_VALIDATE_BOOLEAN);
     }
 
     private function normalizeCompanyCode(?string $companyCode): string
