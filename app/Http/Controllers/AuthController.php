@@ -11,6 +11,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Throwable;
 
 class AuthController extends Controller
@@ -94,6 +96,8 @@ class AuthController extends Controller
                     ], 403);
                 }
             }
+
+            $this->recordLoginAudit($request, $user);
 
             $token = $user->createToken('auth_token')->plainTextToken;
 
@@ -245,6 +249,24 @@ class AuthController extends Controller
         return [$companyPrefix, $nik];
     }
 
+    private function recordLoginAudit(Request $request, User $user): void
+    {
+        $audit = [];
+        if (Schema::hasColumn('users', 'last_login_at')) {
+            $audit['last_login_at'] = now();
+        }
+        if (Schema::hasColumn('users', 'last_login_ip')) {
+            $audit['last_login_ip'] = $this->resolveClientIp($request);
+        }
+        if (Schema::hasColumn('users', 'last_login_user_agent')) {
+            $audit['last_login_user_agent'] = Str::limit((string) $request->userAgent(), 1000, '');
+        }
+
+        if ($audit !== []) {
+            $user->forceFill($audit)->save();
+        }
+    }
+
     private function normalizeCompanyCode(?string $companyCode): string
     {
         $code = strtoupper(trim((string) $companyCode));
@@ -257,6 +279,20 @@ class AuthController extends Controller
         ];
 
         return $aliasMap[$code] ?? $code;
+    }
+
+    private function resolveClientIp(Request $request): string
+    {
+        $forwardedFor = (string) $request->headers->get('X-Forwarded-For', '');
+        if ($forwardedFor !== '') {
+            $parts = explode(',', $forwardedFor);
+            $candidate = trim((string) ($parts[0] ?? ''));
+            if ($candidate !== '' && filter_var($candidate, FILTER_VALIDATE_IP)) {
+                return $candidate;
+            }
+        }
+
+        return (string) $request->ip();
     }
 
     private function resolveLoginCompany(User $user): ?Company

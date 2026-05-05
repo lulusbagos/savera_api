@@ -549,7 +549,7 @@
             <div class="card-head">
                 <div>
                     <h3>Aktivitas User &amp; Perangkat</h3>
-                    <div class="muted" style="margin-top:3px;font-size:10px;letter-spacing:0.05em;text-transform:uppercase">MAC address &middot; menu terakhir &middot; request &amp; error per sesi</div>
+                    <div class="muted" style="margin-top:3px;font-size:10px;letter-spacing:0.05em;text-transform:uppercase">MAC address &middot; login terakhir &middot; menu terakhir &middot; request &amp; error per sesi</div>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px">
                     <span class="pill-outline" id="active-user-count">0 devices</span>
@@ -560,6 +560,7 @@
                 <table>
                     <thead><tr>
                         <th style="width:14%">MAC / IP</th><th style="width:7%">User ID</th><th style="width:10%">User</th>
+                        <th style="width:10%">Login Terakhir</th>
                         <th style="width:10%">Versi App</th><th style="width:10%">Upload Terakhir</th>
                         <th style="width:10%">IP Terakhir</th><th style="width:8%">Jenis IP</th>
                         <th style="width:10%">Network</th>
@@ -573,7 +574,7 @@
                         <th style="width:6%">Error</th><th>Riwayat Menu</th>
                     </tr></thead>
                     <tbody id="user-activity-body">
-                        <tr><td colspan="20" class="empty">Initializing device monitor...</td></tr>
+                        <tr><td colspan="21" class="empty">Initializing device monitor...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -1006,12 +1007,19 @@
             const total = data.total || users.length;
             if (countEl) countEl.textContent = users.length + ' / ' + total + ' devices';
             if (snapEl) snapEl.textContent = data.snapshot_at ? data.snapshot_at.slice(11, 19) : '-';
-            if (!users.length) { tbody.innerHTML = '<tr><td colspan="20" class="empty">No active devices detected</td></tr>'; return; }
+            if (!users.length) { tbody.innerHTML = '<tr><td colspan="21" class="empty">No active devices detected</td></tr>'; return; }
             const statusCls = function(s) { return !s ? '' : s>=500 ? 'status-5xx' : s>=400 ? 'status-4xx' : 'status-2xx'; };
+            const shortDateTime = function(v) {
+                if (!v) return '-';
+                const s = String(v);
+                if (s.length >= 16) return s.slice(5, 16).replace(' ', ' ');
+                return s;
+            };
             tbody.innerHTML = users.map(function(u) {
                 const mac = u.mac || '-';
                 const uid = u.user_id ? '#'+u.user_id : '-';
                 const uname = u.user_name || '-';
+                const lastLogin = shortDateTime(u.last_login_at);
                 const appVersion = u.app_version || 'N/A';
                 const uploadAt = u.last_upload_at ? u.last_upload_at.slice(11,19) : 'N/A';
                 const ip = u.last_ip || '-';
@@ -1060,23 +1068,29 @@
                 const dlVal = (u.downlink_mbps_mobile != null) ? Number(u.downlink_mbps_mobile) : null;
                 const ulVal = (u.uplink_mbps_mobile != null) ? Number(u.uplink_mbps_mobile) : null;
                 const rttVal = (u.rtt_ms_mobile != null) ? Number(u.rtt_ms_mobile) : null;
-                const dl = dlVal != null ? dlVal.toFixed(1) + ' Mbps' : '-';
+                const serverMbps = (u.speed_kbps_est != null) ? Number(u.speed_kbps_est) / 1024 : null;
+                const dl = dlVal != null ? dlVal.toFixed(1) + ' Mbps' : (serverMbps != null ? serverMbps.toFixed(2) + ' Mbps est' : '-');
                 const ul = ulVal != null ? ulVal.toFixed(1) + ' Mbps' : '-';
-                const rtt = rttVal != null ? rttVal.toFixed(0) + ' ms' : '-';
+                const rtt = rttVal != null ? rttVal.toFixed(0) + ' ms' : (u.last_ms != null ? Number(u.last_ms).toFixed(0) + ' ms req' : '-');
                 const netDisplay = networkSource === 'mobile_report'
                     ? toTitle(networkMobile || networkServer)
                     : toTitle(networkServer);
                 const sourceText = networkSource === 'mobile_report' ? 'mobile-report' : 'server-estimate';
                 const sourceCls = networkSource === 'mobile_report' ? 'tag good' : 'tag warn';
                 const quality = (function(){
-                    if (dlVal == null || rttVal == null) return {label:'Estimasi', cls:'tag warn'};
+                    if (dlVal == null || rttVal == null) {
+                        if (speedTier === 'VERY_FAST' || speedTier === 'FAST') return {label:'Server Cepat', cls:'tag good'};
+                        if (speedTier === 'MEDIUM') return {label:'Server Sedang', cls:'tag info'};
+                        if (speedTier === 'SLOW') return {label:'Server Lambat', cls:'tag bad'};
+                        return {label:'Estimasi', cls:'tag warn'};
+                    }
                     if (dlVal >= 20 && rttVal <= 60) return {label:'Sangat Cepat', cls:'tag good'};
                     if (dlVal >= 8 && rttVal <= 120) return {label:'Normal', cls:'tag info'};
                     return {label:'Lambat', cls:'tag bad'};
                 })();
                 const req = u.request_count||0, err = u.error_count||0;
                 const routes = (u.routes||[]).join(', ')||'-';
-                return '<tr><td class="mono" style="font-size:10px">'+mac+'</td><td class="mono" style="color:var(--cyan)">'+uid+'</td><td class="mono" style="font-size:10px">'+uname+'</td><td class="mono" style="font-size:10px">'+appVersion+'</td><td class="mono" style="font-size:10px">'+uploadAt+'</td><td class="mono" style="font-size:10px">'+ip+'</td><td><span class="pill-outline" style="font-size:10px;'+scopeStyle+'">'+scopeLabel+'</span></td><td class="mono" style="font-size:10px">'+netDisplay+'</td><td class="mono" style="font-size:10px">'+dl+'</td><td class="mono" style="font-size:10px">'+ul+'</td><td class="mono" style="font-size:10px">'+rtt+'</td><td><span class="'+sourceCls+'">'+sourceText+'</span></td><td class="mono">'+lastSeen+'</td><td><span class="pill-outline" style="font-size:10px">'+lastRoute+'</span></td><td><span class="method-chip '+methCls+'">'+method+'</span></td><td><span class="'+statusCls(u.last_status)+'">'+status+'</span></td><td><span class="'+quality.cls+'">'+quality.label+'</span></td><td style="color:var(--cyan);font-weight:700">'+req+'</td><td style="'+(err>0?'color:var(--red);font-weight:700':'')+'">'+err+'</td><td style="font-size:10px;color:var(--muted)">'+routes+'</td></tr>';
+                return '<tr><td class="mono" style="font-size:10px">'+mac+'</td><td class="mono" style="color:var(--cyan)">'+uid+'</td><td class="mono" style="font-size:10px">'+uname+'</td><td class="mono" style="font-size:10px">'+lastLogin+'</td><td class="mono" style="font-size:10px">'+appVersion+'</td><td class="mono" style="font-size:10px">'+uploadAt+'</td><td class="mono" style="font-size:10px">'+ip+'</td><td><span class="pill-outline" style="font-size:10px;'+scopeStyle+'">'+scopeLabel+'</span></td><td class="mono" style="font-size:10px">'+netDisplay+'</td><td class="mono" style="font-size:10px">'+dl+'</td><td class="mono" style="font-size:10px">'+ul+'</td><td class="mono" style="font-size:10px">'+rtt+'</td><td><span class="'+sourceCls+'">'+sourceText+'</span></td><td class="mono">'+lastSeen+'</td><td><span class="pill-outline" style="font-size:10px">'+lastRoute+'</span></td><td><span class="method-chip '+methCls+'">'+method+'</span></td><td><span class="'+statusCls(u.last_status)+'">'+status+'</span></td><td><span class="'+quality.cls+'">'+quality.label+'</span></td><td style="color:var(--cyan);font-weight:700">'+req+'</td><td style="'+(err>0?'color:var(--red);font-weight:700':'')+'">'+err+'</td><td style="font-size:10px;color:var(--muted)">'+routes+'</td></tr>';
             }).join('');
         }
 

@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -335,6 +336,8 @@ class LogDashboardController extends Controller
                     'mac'         => $mac,
                     'user_id'     => $req['user_id'] ?? null,
                     'user_name'   => null,
+                    'last_login_at' => null,
+                    'last_login_ip' => null,
                     'last_ip'     => $ip !== '' ? $ip : null,
                     'ip_scope'    => $this->classifyIpScope($ip),
                     'network_type'=> $this->networkTypeFromScope($this->classifyIpScope($ip)),
@@ -437,15 +440,33 @@ class LogDashboardController extends Controller
             return;
         }
 
-        $nameMap = User::query()
+        $columns = ['id', 'name'];
+        $hasLastLoginAt = Schema::hasColumn('users', 'last_login_at');
+        $hasLastLoginIp = Schema::hasColumn('users', 'last_login_ip');
+        if ($hasLastLoginAt) {
+            $columns[] = 'last_login_at';
+        }
+        if ($hasLastLoginIp) {
+            $columns[] = 'last_login_ip';
+        }
+
+        $users = User::query()
+            ->select($columns)
             ->whereIn('id', $userIds)
-            ->pluck('name', 'id')
-            ->all();
+            ->get()
+            ->keyBy('id');
 
         foreach ($rows as &$row) {
             $uid = isset($row['user_id']) ? (int) $row['user_id'] : 0;
             if ($uid > 0) {
-                $row['user_name'] = $nameMap[$uid] ?? null;
+                $user = $users->get($uid);
+                $row['user_name'] = $user?->name;
+                if ($hasLastLoginAt) {
+                    $row['last_login_at'] = optional($user?->last_login_at)->toDateTimeString();
+                }
+                if ($hasLastLoginIp) {
+                    $row['last_login_ip'] = $user?->last_login_ip;
+                }
             }
         }
         unset($row);
