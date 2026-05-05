@@ -26,7 +26,7 @@ class MobileNotificationController extends Controller
                     ->orWhere('published_at', '<=', Carbon::now());
             })
             ->where(function ($inner) {
-                $windowStart = Carbon::now()->subDays(31);
+                $windowStart = Carbon::now()->subDays(30);
                 $inner
                     ->where(function ($q) use ($windowStart) {
                         $q->whereNotNull('published_at')
@@ -43,7 +43,48 @@ class MobileNotificationController extends Controller
 
         $rows = $query->limit(30)->get()->map(function (MobileNotification $row) {
             $messageHtml = (string) ($row->message_html ?? '');
-            $messagePlain = trim(strip_tags($messageHtml));
+            $payload = is_array($row->payload_json) ? $row->payload_json : [];
+
+            if (($row->source_type ?? '') === 'attendance_inout' && ! empty($payload)) {
+                $nik = trim((string) ($payload['nik'] ?? ''));
+                $jamIn = trim((string) ($payload['jam_in'] ?? ''));
+                $jamOut = trim((string) ($payload['jam_out'] ?? ''));
+                $ipIn = trim((string) ($payload['ip_in'] ?? ''));
+                $ipOut = trim((string) ($payload['ip_out'] ?? ''));
+                $printerIn = trim((string) ($payload['nama_printer_in'] ?? ''));
+                $printerOut = trim((string) ($payload['nama_printer_out'] ?? ''));
+
+                $tanggalRaw = trim((string) ($payload['tanggal'] ?? ''));
+                $tanggal = '-';
+                if ($tanggalRaw !== '') {
+                    try {
+                        $tanggal = Carbon::parse($tanggalRaw)->format('d/m/Y');
+                    } catch (\Throwable) {
+                        $tanggal = $tanggalRaw;
+                    }
+                }
+
+                $messageHtml = '<font color="#16A34A"><b>ABSENSI HARIAN</b></font><br>'
+                    . '<b>Ringkasan In/Out Karyawan</b><br><br>'
+                    . '<b>NIK:</b> ' . e($nik !== '' ? $nik : '-') . '<br>'
+                    . '<b>Tanggal:</b> ' . e($tanggal) . '<br>'
+                    . '<b>Jam In:</b> ' . e($jamIn !== '' ? $jamIn : '-') . '<br>'
+                    . '<b>Jam Out:</b> ' . e($jamOut !== '' ? $jamOut : '-') . '<br>'
+                    . '<b>Lokasi (IP):</b> ' . e(($ipIn !== '' ? $ipIn : '-') . ' / ' . ($ipOut !== '' ? $ipOut : '-')) . '<br>'
+                    . '<b>Lokasi Mesin:</b> ' . e(($printerIn !== '' ? $printerIn : '-') . ' / ' . ($printerOut !== '' ? $printerOut : '-'));
+
+                $messagePlain = implode("\n", [
+                    'Ringkasan In/Out Karyawan',
+                    'NIK      : ' . ($nik !== '' ? $nik : '-'),
+                    'Tanggal  : ' . $tanggal,
+                    'Jam In   : ' . ($jamIn !== '' ? $jamIn : '-'),
+                    'Jam Out  : ' . ($jamOut !== '' ? $jamOut : '-'),
+                    'Lokasi   : ' . ($ipIn !== '' ? $ipIn : '-') . ' / ' . ($ipOut !== '' ? $ipOut : '-'),
+                    'Mesin    : ' . ($printerIn !== '' ? $printerIn : '-') . ' / ' . ($printerOut !== '' ? $printerOut : '-'),
+                ]);
+            } else {
+                $messagePlain = trim(strip_tags($messageHtml));
+            }
             return [
                 'id' => $row->id,
                 'title' => $row->title,

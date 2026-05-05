@@ -12,9 +12,18 @@ class ArticleController extends Controller
     public function index(Request $request)
     {
         $companyId = $request->user()->employee->company_id ?? null;
+        $requestedType = trim((string) $request->query('type', 'Zona Operator Pintar'));
+        $normalizedType = mb_strtolower($requestedType);
 
-        $articles = Article::where('type', 'Zona Operator Pintar')
-            ->where('status', '!=', 0)
+        $articles = Article::query()
+            ->where(function ($query) {
+                $query->whereNull('status')
+                    ->orWhere('status', '!=', 0);
+            })
+            ->where(function ($query) use ($normalizedType) {
+                $query->whereRaw('LOWER(TRIM(type)) = ?', [$normalizedType])
+                    ->orWhereRaw('LOWER(TRIM(category)) = ?', [$normalizedType]);
+            })
             ->when($companyId, fn($q) => $q->where('company_id', $companyId))
             ->orderByDesc('updated_at')
             ->get()
@@ -45,7 +54,12 @@ class ArticleController extends Controller
 
     public function show($id)
     {
-        $article = Article::where('status', '!=', 0)->findOrFail($id);
+        $article = Article::query()
+            ->where(function ($query) {
+                $query->whereNull('status')
+                    ->orWhere('status', '!=', 0);
+            })
+            ->findOrFail($id);
         $imageUrl = $this->resolveImageUrl($article, request());
 
         return response()->json([

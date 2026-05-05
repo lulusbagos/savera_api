@@ -1,10 +1,13 @@
 <?php
+if (defined('SAVERA_API_CONSOLE_BOOTSTRAPPED')) { return; }
+define('SAVERA_API_CONSOLE_BOOTSTRAPPED', true);
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -15,6 +18,140 @@ use Carbon\Carbon;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote')->hourly();
+
+Artisan::command('codewatch:scan {--force-alert=0}', function () {
+    $toBool = static function (mixed $value, bool $default = false): bool {
+        if ($value === null || $value === '') {
+            return $default;
+        }
+        if (is_bool($value)) {
+            return $value;
+        }
+        $normalized = strtolower(trim((string) $value));
+        return in_array($normalized, ['1', 'true', 'yes', 'on'], true);
+    };
+
+    $forceAlert = $toBool($this->option('force-alert'));
+    $enabled = $toBool(env('CODEWATCH_ENABLED', false));
+    if (! $enabled && ! $forceAlert) {
+        $this->line('Code watch disabled.');
+        return 0;
+    }
+
+    $watchPaths = array_values(array_filter(array_map('trim', explode(',', (string) env(
+        'CODEWATCH_PATHS',
+        'app,bootstrap,config,routes,resources,database/migrations'
+    )))));
+    $snapshotPath = storage_path('app/codewatch_snapshot_api.json');
+    $host = gethostname() ?: php_uname('n');
+
+    $collectFiles = static function (array $paths): array {
+        $out = [];
+        foreach ($paths as $relative) {
+            $absolute = base_path($relative);
+            if (! is_dir($absolute) && ! is_file($absolute)) {
+                continue;
+            }
+
+            if (is_file($absolute)) {
+                $files = [new \SplFileInfo($absolute)];
+            } else {
+                $files = File::allFiles($absolute);
+            }
+
+            foreach ($files as $file) {
+                $filePath = str_replace('\\', '/', $file->getPathname());
+                $relPath = str_replace('\\', '/', Str::after($filePath, str_replace('\\', '/', base_path()) . '/'));
+
+                if (str_starts_with($relPath, 'storage/') || str_starts_with($relPath, 'vendor/') || str_contains($relPath, '/.git/')) {
+                    continue;
+                }
+
+                $out[$relPath] = [
+                    'hash' => @hash_file('sha256', $filePath) ?: '',
+                    'mtime' => @filemtime($filePath) ?: 0,
+                ];
+            }
+        }
+
+        ksort($out);
+        return $out;
+    };
+
+    $current = $collectFiles($watchPaths);
+    if ($current === []) {
+        $this->warn('No files collected for code watch.');
+        return 0;
+    }
+
+    $previous = [];
+    if (is_file($snapshotPath)) {
+        $raw = File::get($snapshotPath);
+        $decoded = json_decode((string) $raw, true);
+        if (is_array($decoded)) {
+            $previous = $decoded;
+        }
+    }
+
+    if ($previous === []) {
+        File::ensureDirectoryExists(dirname($snapshotPath));
+        File::put($snapshotPath, json_encode($current, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+        $this->info('Initial snapshot created (API).');
+        return 0;
+    }
+
+    $added = array_keys(array_diff_key($current, $previous));
+    $deleted = array_keys(array_diff_key($previous, $current));
+    $modified = [];
+
+    foreach ($current as $path => $meta) {
+        if (! isset($previous[$path])) {
+            continue;
+        }
+        if ((string) ($meta['hash'] ?? '') !== (string) ($previous[$path]['hash'] ?? '')) {
+            $modified[] = $path;
+        }
+    }
+
+    if ($added === [] && $deleted === [] && $modified === []) {
+        $this->line('No source changes detected.');
+        return 0;
+    }
+
+    $emails = array_values(array_filter(array_map('trim', explode(',', (string) env('CODEWATCH_ALERT_TO', '')))));
+    if ($emails === []) {
+        Log::warning('Code watch detected changes but CODEWATCH_ALERT_TO is empty.', [
+            'app' => config('app.name'),
+            'host' => $host,
+            'added' => count($added),
+            'modified' => count($modified),
+            'deleted' => count($deleted),
+        ]);
+    } else {
+        $maxList = max(1, (int) env('CODEWATCH_LIST_LIMIT', 60));
+        $body = "Code change detected on API server.\n"
+            . 'App: ' . config('app.name') . "\n"
+            . 'Host: ' . $host . "\n"
+            . 'Time: ' . now()->toDateTimeString() . "\n\n"
+            . 'Added: ' . count($added) . "\n"
+            . implode("\n", array_slice($added, 0, $maxList)) . "\n\n"
+            . 'Modified: ' . count($modified) . "\n"
+            . implode("\n", array_slice($modified, 0, $maxList)) . "\n\n"
+            . 'Deleted: ' . count($deleted) . "\n"
+            . implode("\n", array_slice($deleted, 0, $maxList)) . "\n";
+
+        foreach ($emails as $email) {
+            Mail::raw($body, function ($message) use ($email, $host) {
+                $message->to($email)
+                    ->subject('[ALERT][API] Source changed on ' . $host);
+            });
+        }
+    }
+
+    File::put($snapshotPath, json_encode($current, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+    $this->info('Code watch alert processed (API).');
+    return 0;
+})->purpose('Scan source changes and send email alerts (API)');
 
 // Bersihkan log utama tiap 5 jam agar tidak menumpuk di memori/disk.
 Artisan::command('logs:prune', function () {
@@ -151,7 +288,7 @@ Artisan::command('mobile:simulate-load {--users=100} {--upload-retries=2} {--ben
     }
 })->purpose('Simulasikan load mobile dengan banyak user dan retry upload');
 
-Artisan::command('notifications:sync-attendance {--company-id=2} {--days=31} {--source-connection=} {--source-view=} {--dry-run}', function () {
+Artisan::command('notifications:sync-attendance {--company-id=2} {--days=30} {--source-connection=} {--source-view=} {--dry-run}', function () {
     $companyId = max(1, (int) $this->option('company-id'));
     $days = max(1, (int) $this->option('days'));
     $sourceConnection = (string) ($this->option('source-connection') ?: env('ATTENDANCE_SOURCE_CONNECTION', 'pgsql_nakula'));
@@ -287,24 +424,19 @@ Artisan::command('notifications:sync-attendance {--company-id=2} {--days=31} {--
         $printerOut = trim((string) ($row['nama_printer_out'] ?? ''));
         $sourceId = trim((string) ($row['source_id'] ?? ''));
 
-        $sourceRef = 'attendance:' . $nikKey . ':' . $tanggal . ':' . ($jamIn !== '' ? $jamIn : '-') . ':' . ($jamOut !== '' ? $jamOut : '-');
-        if ($sourceId !== '') {
-            $sourceRef .= ':' . $sourceId;
-        }
+        // Stabil per user-harian agar update jam in/out tidak membuat notifikasi baru (double).
+        $sourceRef = 'attendance:' . $nikKey . ':' . $tanggal;
         $sourceRef = Str::limit($sourceRef, 118, '');
 
         $title = 'Absensi Harian ' . Carbon::parse($tanggal)->format('d M Y');
-        $messageHtml = '<div style="font-family:Arial,sans-serif;font-size:13px;line-height:1.5">'
-            . '<div style="font-weight:700;color:#0f172a;margin-bottom:6px">Ringkasan In/Out Karyawan</div>'
-            . '<table style="width:100%;border-collapse:collapse">'
-            . '<tr><td style="padding:3px 0;color:#64748b">NIK</td><td style="padding:3px 0;color:#0f172a;font-weight:600">' . e($nikRaw) . '</td></tr>'
-            . '<tr><td style="padding:3px 0;color:#64748b">Tanggal</td><td style="padding:3px 0;color:#0f172a">' . e(Carbon::parse($tanggal)->format('d/m/Y')) . '</td></tr>'
-            . '<tr><td style="padding:3px 0;color:#64748b">Jam In</td><td style="padding:3px 0;color:#0f172a">' . e($jamIn !== '' ? $jamIn : '-') . '</td></tr>'
-            . '<tr><td style="padding:3px 0;color:#64748b">Jam Out</td><td style="padding:3px 0;color:#0f172a">' . e($jamOut !== '' ? $jamOut : '-') . '</td></tr>'
-            . '<tr><td style="padding:3px 0;color:#64748b">IP In / Out</td><td style="padding:3px 0;color:#0f172a">' . e(($ipIn !== '' ? $ipIn : '-') . ' / ' . ($ipOut !== '' ? $ipOut : '-')) . '</td></tr>'
-            . '<tr><td style="padding:3px 0;color:#64748b">Printer In / Out</td><td style="padding:3px 0;color:#0f172a">' . e(($printerIn !== '' ? $printerIn : '-') . ' / ' . ($printerOut !== '' ? $printerOut : '-')) . '</td></tr>'
-            . '</table>'
-            . '</div>';
+        $messageHtml = '<font color="#16A34A"><b>ABSENSI HARIAN</b></font><br>'
+            . '<b>Ringkasan In/Out Karyawan</b><br><br>'
+            . '<b>NIK:</b> ' . e($nikRaw) . '<br>'
+            . '<b>Tanggal:</b> ' . e(Carbon::parse($tanggal)->format('d/m/Y')) . '<br>'
+            . '<b>Jam In:</b> ' . e($jamIn !== '' ? $jamIn : '-') . '<br>'
+            . '<b>Jam Out:</b> ' . e($jamOut !== '' ? $jamOut : '-') . '<br>'
+            . '<b>Lokasi (IP):</b> ' . e(($ipIn !== '' ? $ipIn : '-') . ' / ' . ($ipOut !== '' ? $ipOut : '-')) . '<br>'
+            . '<b>Lokasi Mesin:</b> ' . e(($printerIn !== '' ? $printerIn : '-') . ' / ' . ($printerOut !== '' ? $printerOut : '-'));
 
         $recipient = $userByNik[$nikKey];
         $insertBatch[] = [
@@ -340,6 +472,24 @@ Artisan::command('notifications:sync-attendance {--company-id=2} {--days=31} {--
         return 0;
     }
 
+    $deletedOld = DB::table('mobile_notifications')
+        ->where('company_id', $companyId)
+        ->where(function ($q) use ($windowStart) {
+            $q->where(function ($inner) use ($windowStart) {
+                $inner->whereNotNull('published_at')
+                    ->where('published_at', '<', $windowStart);
+            })->orWhere(function ($inner) use ($windowStart) {
+                $inner->whereNull('published_at')
+                    ->whereNotNull('source_event_at')
+                    ->where('source_event_at', '<', $windowStart);
+            })->orWhere(function ($inner) use ($windowStart) {
+                $inner->whereNull('published_at')
+                    ->whereNull('source_event_at')
+                    ->where('created_at', '<', $windowStart);
+            });
+        })
+        ->delete();
+
     if (! empty($insertBatch)) {
         foreach (array_chunk($insertBatch, 500) as $chunk) {
             DB::table('mobile_notifications')->upsert(
@@ -361,10 +511,46 @@ Artisan::command('notifications:sync-attendance {--company-id=2} {--days=31} {--
     $this->line('Processed rows: ' . count($rows));
     $this->line('Upsert rows: ' . $created);
     $this->line('Skipped (NIK tidak match user): ' . $skippedNoUser);
+    $this->line('Pruned old rows (< ' . $windowStart->toDateString() . '): ' . $deletedOld);
     $this->line('Potential duplicates avoided: ' . $duplicates);
 
     return 0;
 })->purpose('Sinkron data absensi (in/out) menjadi notifikasi mobile per user');
+
+Artisan::command('notifications:dedupe-attendance {--company-id=2}', function () {
+    $companyId = max(1, (int) $this->option('company-id'));
+
+    $deleted = DB::affectingStatement(<<<'SQL'
+WITH ranked AS (
+    SELECT
+        id,
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                company_id,
+                user_id,
+                COALESCE(
+                    NULLIF(payload_json->>'tanggal', ''),
+                    TO_CHAR(source_event_at::date, 'YYYY-MM-DD'),
+                    SUBSTRING(source_ref FROM 'attendance:[^:]+:([0-9]{4}-[0-9]{2}-[0-9]{2})')
+                )
+            ORDER BY COALESCE(published_at, source_event_at, created_at) DESC, id DESC
+        ) AS rn
+    FROM mobile_notifications
+    WHERE company_id = ?
+      AND source_type = 'attendance_inout'
+      AND deleted_at IS NULL
+)
+DELETE FROM mobile_notifications m
+USING ranked r
+WHERE m.id = r.id
+  AND r.rn > 1
+SQL, [$companyId]);
+
+    $this->info('Deduplikasi notifikasi absensi selesai.');
+    $this->line('Deleted duplicate rows: ' . $deleted);
+
+    return 0;
+})->purpose('Hapus notifikasi absensi harian duplikat (satu user satu tanggal satu notifikasi)');
 
 if (MobileIngestRuntime::workerEnabled() && MobileIngestRuntime::usesAsyncQueue()) {
     Schedule::command(
@@ -376,6 +562,14 @@ if (MobileIngestRuntime::workerEnabled() && MobileIngestRuntime::usesAsyncQueue(
         ->withoutOverlapping();
 }
 
-Schedule::command('notifications:sync-attendance --company-id=2 --days=31')
+Schedule::command('notifications:sync-attendance --company-id=2 --days=30')
     ->everyTenMinutes()
+    ->withoutOverlapping();
+
+Schedule::command('notifications:dedupe-attendance --company-id=2')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
+
+Schedule::command('codewatch:scan')
+    ->everyMinute()
     ->withoutOverlapping();

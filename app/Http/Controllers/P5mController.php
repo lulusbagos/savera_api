@@ -50,21 +50,6 @@ class P5mController extends Controller
             ? $this->todayScoreForQuiz($company->id, $employee->id, (int) $activeQuizId, $today, $activeQuizVersionAt)
             : null;
 
-        // Backward compatibility: some clients lock quiz from any today score row.
-        // If active quiz is not submitted yet, hide today scores from older quizzes.
-        if ($todayScore === null) {
-            $scores = $scores
-                ->filter(function ($row) use ($today, $activeQuizId) {
-                    $rowDate = (string) ($row['date'] ?? '');
-                    $rowQuizId = (int) data_get($row, 'quiz.id', 0);
-                    $isToday = $rowDate === $today;
-                    $isOtherQuiz = $activeQuizId ? $rowQuizId !== (int) $activeQuizId : true;
-
-                    return ! ($isToday && $isOtherQuiz);
-                })
-                ->values();
-        }
-
         return response([
             'message' => 'ok',
             'data' => [
@@ -109,7 +94,7 @@ class P5mController extends Controller
         try {
             $payload = $request->validate([
                 'quiz_id' => 'required|integer',
-                'answer' => 'required|array|min:2',
+                'answer' => 'required|array|min:1',
                 'answer.*.id' => 'required|integer',
                 'answer.*.value' => 'required|string|size:1',
             ]);
@@ -129,20 +114,27 @@ class P5mController extends Controller
 
         $today = Carbon::now()->toDateString();
         $quizVersionAt = $this->quizVersionTimestamp($quiz->id, $this->formatTimestampForCompare($quiz->updated_at));
-        $exists = P5m::query()
+        $existing = P5m::query()
             ->where('date', $today)
             ->where('company_id', $company->id)
             ->where('employee_id', $employee->id)
             ->where('quiz_id', $quiz->id)
-            ->where('platform', 'savera')
             ->when(! empty($quizVersionAt), function ($query) use ($quizVersionAt) {
                 $query->where('created_at', '>=', $quizVersionAt);
             })
-            ->exists();
-        if ($exists) {
+            ->orderByDesc('id')
+            ->first(['id', 'date', 'score', 'status', 'quiz_id', 'created_at']);
+        if ($existing) {
             return response([
                 'message' => 'Already submitted',
-                'data' => null,
+                'data' => [
+                    'id' => $existing->id,
+                    'date' => $existing->date,
+                    'score' => (int) ($existing->score ?? 0),
+                    'status' => $existing->status,
+                    'quiz_id' => (int) ($existing->quiz_id ?? 0),
+                    'created_at' => $this->toIsoString($existing->created_at),
+                ],
             ]);
         }
 
@@ -236,19 +228,6 @@ class P5mController extends Controller
         $todayScore = $activeQuizId
             ? $this->todayScoreForQuiz($company->id, $employee->id, (int) $activeQuizId, $today, $activeQuizVersionAt)
             : null;
-
-        if ($todayScore === null) {
-            $scores = $scores
-                ->filter(function ($row) use ($today, $activeQuizId) {
-                    $rowDate = (string) ($row['date'] ?? '');
-                    $rowQuizId = (int) data_get($row, 'quiz.id', 0);
-                    $isToday = $rowDate === $today;
-                    $isOtherQuiz = $activeQuizId ? $rowQuizId !== (int) $activeQuizId : true;
-
-                    return ! ($isToday && $isOtherQuiz);
-                })
-                ->values();
-        }
 
         return response([
             'message' => 'ok',
@@ -479,7 +458,7 @@ class P5mController extends Controller
 
         if (! $quiz) {
             $reason = empty($candidateBeforeDepartmentIds)
-                ? 'no_active_quiz_for_company_or_items_lt_2'
+                ? 'no_active_quiz_for_company_or_items_lt_1'
                 : 'department_not_matched';
 
             return [
@@ -753,15 +732,14 @@ class P5mController extends Controller
     private function todayScoreForQuiz(int $companyId, int $employeeId, int $quizId, string $date, ?string $quizUpdatedAt = null): ?array
     {
         $row = P5m::query()
-            ->selectRaw('p5m.id, p5m.date, p5m.score, p5m.status, p5m.created_at, p5m.quiz_id, p5m.code, p5m.fullname, p5m.job, p5m.company_id, p5m.department_id, quizzes.title as quiz_title, companies.code as company_code, companies.name as company_name, departments.name as department_name')
-            ->join('quizzes', 'p5m.quiz_id', '=', 'quizzes.id')
+            ->selectRaw("p5m.id, p5m.date, p5m.score, p5m.status, p5m.created_at, p5m.quiz_id, p5m.code, p5m.fullname, p5m.job, p5m.company_id, p5m.department_id, COALESCE(quizzes.title, 'P5M') as quiz_title, companies.code as company_code, companies.name as company_name, departments.name as department_name")
+            ->leftJoin('quizzes', 'p5m.quiz_id', '=', 'quizzes.id')
             ->leftJoin('companies', 'p5m.company_id', '=', 'companies.id')
             ->leftJoin('departments', 'p5m.department_id', '=', 'departments.id')
             ->where('p5m.company_id', $companyId)
             ->where('p5m.employee_id', $employeeId)
             ->where('p5m.quiz_id', $quizId)
             ->where('p5m.date', $date)
-            ->where('p5m.platform', 'savera')
             ->when(! empty($quizUpdatedAt), function ($query) use ($quizUpdatedAt) {
                 $query->where('p5m.created_at', '>=', $quizUpdatedAt);
             })
@@ -842,13 +820,12 @@ class P5mController extends Controller
     private function historyQuery(int $companyId, int $employeeId)
     {
         return P5m::query()
-            ->selectRaw('p5m.id, p5m.date, p5m.score, p5m.status, p5m.created_at, p5m.quiz_id, p5m.code, p5m.fullname, p5m.job, p5m.company_id, p5m.department_id, quizzes.title as quiz_title, companies.code as company_code, companies.name as company_name, departments.name as department_name')
-            ->join('quizzes', 'p5m.quiz_id', '=', 'quizzes.id')
+            ->selectRaw("p5m.id, p5m.date, p5m.score, p5m.status, p5m.created_at, p5m.quiz_id, p5m.code, p5m.fullname, p5m.job, p5m.company_id, p5m.department_id, COALESCE(quizzes.title, 'P5M') as quiz_title, companies.code as company_code, companies.name as company_name, departments.name as department_name")
+            ->leftJoin('quizzes', 'p5m.quiz_id', '=', 'quizzes.id')
             ->leftJoin('companies', 'p5m.company_id', '=', 'companies.id')
             ->leftJoin('departments', 'p5m.department_id', '=', 'departments.id')
             ->where('p5m.company_id', $companyId)
             ->where('p5m.employee_id', $employeeId)
-            ->where('p5m.platform', 'savera')
             ->orderByDesc('p5m.id');
     }
 

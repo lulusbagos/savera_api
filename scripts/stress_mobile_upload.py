@@ -168,18 +168,23 @@ def read_users(csv_path: Path) -> list[UserCred]:
     return users
 
 
-async def login_token(client: httpx.AsyncClient, base_url: str, user: UserCred) -> str | None:
+async def login_token(client: httpx.AsyncClient, base_url: str, user: UserCred) -> tuple[str | None, int, str]:
     url = f"{base_url.rstrip('/')}/api/login"
     headers = {"company": user.company, "accept": "application/json"}
     payload = {"email": user.login, "password": user.password}
     try:
         r = await client.post(url, json=payload, headers=headers)
-    except Exception:
-        return None
+    except Exception as e:
+        return None, 0, str(e)
     if r.status_code != 200:
-        return None
+        err = ""
+        try:
+            err = json.dumps(r.json(), ensure_ascii=False)[:300]
+        except Exception:
+            err = (r.text or "")[:300]
+        return None, r.status_code, err
     body = r.json()
-    return body.get("token")
+    return body.get("token"), r.status_code, ""
 
 
 async def hit_endpoint(
@@ -223,9 +228,12 @@ async def worker(
 ) -> list[ReqResult]:
     results: list[ReqResult] = []
     async with sem:
-        token = await login_token(client, base_url, user)
+        token, login_status, login_error = await login_token(client, base_url, user)
         if not token:
-            results.append(ReqResult(ok=False, status=401, latency_ms=0, endpoint="login", error=f"login failed: {user.login}"))
+            error_text = f"login failed: {user.login}"
+            if login_error:
+                error_text = f"{error_text} | {login_error}"
+            results.append(ReqResult(ok=False, status=login_status or 0, latency_ms=0, endpoint="login", error=error_text))
             return results
 
         for _ in range(requests_per_user):

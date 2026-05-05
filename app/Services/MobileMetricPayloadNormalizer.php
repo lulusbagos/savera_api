@@ -301,8 +301,10 @@ class MobileMetricPayloadNormalizer
             return 0;
         }
 
-        // Some devices send duration in minutes, convert to seconds.
-        if ($duration > 0 && $duration < 1000) {
+        // Some legacy payloads send duration in minutes.
+        // For current mobile payload (incl. Mi Band 9/10), duration is seconds.
+        // If interval exists and value is still plausible as seconds, keep it.
+        if ($duration > 0 && $duration < 1000 && ($intervalSeconds <= 0 || $duration > $intervalSeconds)) {
             $duration *= 60;
         }
 

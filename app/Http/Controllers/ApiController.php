@@ -296,6 +296,45 @@ class ApiController extends Controller
         );
     }
 
+    public function sleepSnapshot(Request $request)
+    {
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
+        if (! $company) {
+            return response([
+                'message' => 'Company not found.',
+            ], 404);
+        }
+
+        return $this->ingestMetrics(
+            request: $request,
+            company: $company,
+            source: 'sleep-snapshot',
+            validationRules: [
+                'device_time' => 'required|string',
+                'mac_address' => 'required|string',
+                'employee_id' => 'required|numeric',
+                'sleep' => 'nullable|numeric',
+                'sleep_start' => 'nullable|numeric',
+                'sleep_end' => 'nullable|numeric',
+                'sleep_type' => 'nullable|string',
+                'light_sleep' => 'nullable|numeric',
+                'deep_sleep' => 'nullable|numeric',
+                'rem_sleep' => 'nullable|numeric',
+                'awake' => 'nullable|numeric',
+            ],
+            metricMap: [
+                'data_activity' => 'user_activity',
+                'data_sleep' => 'user_sleep',
+                'data_stress' => 'user_stress',
+                'data_spo2' => 'user_spo2',
+                'data_heart_rate_max' => 'user_heart_rate_max',
+                'data_heart_rate_resting' => 'user_heart_rate_resting',
+                'data_heart_rate_manual' => 'user_heart_rate_manual',
+            ],
+            payloadBuilder: fn (Request $request, Company $company, Device $device, Employee $employee): array => $this->buildSleepSnapshotIngestPayload($request, $company, $device, $employee)
+        );
+    }
+
     public function ticket(Request $request, $id = null)
     {
         $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
@@ -401,7 +440,10 @@ class ApiController extends Controller
         $summary['transport'] = $transport;
         $summary['date'] = Carbon::parse($summary['send_date'])->format('d F Y');
         $summary['time'] = $summary['send_time'];
-        $summary['sleep_text'] = '-';
+        $summary['sleep_minutes'] = max(0, (int) ($summary['sleep'] ?? 0));
+        $summary['sleep_duration_minutes'] = $summary['sleep_minutes'];
+        $summary['sleep_duration'] = $this->minutesToTicketSleepText($summary['sleep_minutes']);
+        $summary['sleep_text'] = $this->minutesToSleepText($summary['sleep_minutes']);
         $summary['message'] = 'Minum Obat: '.($summary['is_fit1'] == 0 ? 'tidak' : 'ya').'
         Ada Masalah Konsentrasi: '.($summary['is_fit2'] == 0 ? 'tidak' : 'ya').'
         Siap Bekerja: '.($summary['is_fit3'] == 0 ? 'tidak' : 'ya').'
@@ -825,7 +867,7 @@ class ApiController extends Controller
     private function lockEmployeeByCompanyAndId(int $companyId, int $employeeId): ?Employee
     {
         return Employee::query()
-            ->select(['id', 'user_id', 'company_id', 'device_id'])
+            ->select(['id', 'user_id', 'company_id', 'device_id', 'department_id'])
             ->whereKey($employeeId)
             ->where('company_id', $companyId)
             ->lockForUpdate()
@@ -1119,10 +1161,31 @@ class ApiController extends Controller
         $req['send_time'] = Carbon::now()->toTimeString();
         $req['sleep_type'] = $request->input('sleep_type', 'night') ?? 'night';
         $this->applyFitToWorkPayload($request, $req);
-        $sleepFromMetricPayload = $this->resolveSleepMinutesFromMetricPayload($request->input('user_sleep', $request->input('data_sleep')));
         $reportedSleepMinutes = max(0, (int) round((float) ($req['sleep'] ?? 0)));
-        if ($sleepFromMetricPayload > 0 && ($reportedSleepMinutes <= 0 || abs($reportedSleepMinutes - $sleepFromMetricPayload) >= 45)) {
-            $req['sleep'] = $sleepFromMetricPayload;
+        $stageSleepMinutes = $this->resolveSleepStageMinutes($req);
+        $metricSleep = $this->resolveWindowedSleepFromMetricPayload(
+            $request->input('user_sleep', $request->input('data_sleep')),
+            (string) ($req['sleep_type'] ?? 'night'),
+            (string) ($req['device_time'] ?? '')
+        );
+        $req['sleep'] = $this->resolveTrustedSleepMinutes(
+            $reportedSleepMinutes,
+            $stageSleepMinutes,
+            (int) ($metricSleep['minutes'] ?? 0)
+        );
+        $metricSleepStart = (int) ($metricSleep['main_start'] ?? 0);
+        $reportedSleepStart = $this->normalizeMetricTs($req['sleep_start'] ?? 0);
+        if ($metricSleepStart > 0 && (
+            $reportedSleepStart <= 0
+            || $reportedSleepStart < ($metricSleepStart - 3600)
+            || $reportedSleepStart > ($metricSleepStart + 3600)
+        )) {
+            $req['sleep_start'] = $metricSleepStart;
+        }
+        $metricSleepEnd = (int) ($metricSleep['main_end'] ?? 0);
+        $reportedSleepEnd = $this->normalizeMetricTs($req['sleep_end'] ?? 0);
+        if ($metricSleepEnd > 0 && ($reportedSleepEnd <= 0 || $reportedSleepEnd > ($metricSleepEnd + 3600))) {
+            $req['sleep_end'] = $metricSleepEnd;
         }
         $req['sleep_text'] = $this->minutesToSleepText((int) ($req['sleep'] ?? 0));
 
@@ -1174,6 +1237,129 @@ class ApiController extends Controller
             'data' => $req,
             'file' => $file,
         ];
+    }
+
+    /**
+     * @return array{data: array<string, mixed>, file: string}
+     */
+    private function buildSleepSnapshotIngestPayload(Request $request, Company $company, Device $device, Employee $employee): array
+    {
+        $deviceTime = (string) $request->input('device_time', Carbon::now()->toDateTimeString());
+        $deviceDate = Str::substr($deviceTime, 0, 10);
+        $sendDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $deviceDate) === 1
+            ? $deviceDate
+            : Carbon::now()->toDateString();
+        $sleepType = strtolower(trim((string) $request->input('sleep_type', 'night')));
+        if (! in_array($sleepType, ['day', 'night'], true)) {
+            $sleepType = 'night';
+        }
+
+        $req = [
+            'active' => $this->nullableInteger($request->input('active')),
+            'steps' => $this->nullableInteger($request->input('steps')),
+            'heart_rate' => $this->nullableInteger($request->input('heart_rate')),
+            'distance' => $this->nullableFloat($request->input('distance')),
+            'calories' => $this->nullableInteger($request->input('calories')),
+            'spo2' => $this->nullableInteger($request->input('spo2')),
+            'stress' => $this->nullableInteger($request->input('stress')),
+            'sleep' => $this->nullableInteger($request->input('sleep')) ?? 0,
+            'sleep_start' => $this->nullableInteger($request->input('sleep_start')),
+            'sleep_end' => $this->nullableInteger($request->input('sleep_end')),
+            'sleep_type' => $sleepType,
+            'light_sleep' => $this->nullableInteger($request->input('light_sleep')) ?? 0,
+            'deep_sleep' => $this->nullableInteger($request->input('deep_sleep')) ?? 0,
+            'rem_sleep' => $this->nullableInteger($request->input('rem_sleep')) ?? 0,
+            'awake' => $this->nullableInteger($request->input('awake')) ?? 0,
+            'wakeup' => $this->nullableInteger($request->input('wakeup')) ?? 0,
+            'status' => $this->nullableInteger($request->input('status')),
+            'send_date' => $sendDate,
+            'send_time' => Carbon::now()->toTimeString(),
+            'user_id' => $employee->user_id,
+            'employee_id' => $employee->id,
+            'company_id' => $company->id,
+            'department_id' => $employee->department_id,
+            'shift_id' => $this->nullableInteger($request->input('shift_id')),
+            'device_id' => $device->id,
+            'device_time' => $deviceTime,
+            'app_version' => $request->input('app_version'),
+        ];
+
+        $reportedSleepMinutes = max(0, (int) ($req['sleep'] ?? 0));
+        $stageSleepMinutes = $this->resolveSleepStageMinutes($req);
+        $metricSleep = $this->resolveWindowedSleepFromMetricPayload(
+            $request->input('user_sleep', $request->input('data_sleep')),
+            $sleepType,
+            $deviceTime
+        );
+        $req['sleep'] = $this->resolveTrustedSleepMinutes(
+            $reportedSleepMinutes,
+            $stageSleepMinutes,
+            (int) ($metricSleep['minutes'] ?? 0)
+        );
+
+        $metricSleepStart = (int) ($metricSleep['main_start'] ?? 0);
+        $reportedSleepStart = $this->normalizeMetricTs($req['sleep_start'] ?? 0);
+        if ($metricSleepStart > 0 && (
+            $reportedSleepStart <= 0
+            || $reportedSleepStart < ($metricSleepStart - 3600)
+            || $reportedSleepStart > ($metricSleepStart + 3600)
+        )) {
+            $req['sleep_start'] = $metricSleepStart;
+        }
+
+        $metricSleepEnd = (int) ($metricSleep['main_end'] ?? 0);
+        $reportedSleepEnd = $this->normalizeMetricTs($req['sleep_end'] ?? 0);
+        if ($metricSleepEnd > 0 && ($reportedSleepEnd <= 0 || $reportedSleepEnd > ($metricSleepEnd + 3600))) {
+            $req['sleep_end'] = $metricSleepEnd;
+        }
+        $req['sleep_text'] = $this->minutesToSleepText((int) ($req['sleep'] ?? 0));
+
+        $summary = Summary::query()
+            ->where('company_id', $company->id)
+            ->where('user_id', $employee->user_id)
+            ->whereDate('send_date', $sendDate)
+            ->where('sleep_type', $sleepType)
+            ->first();
+
+        $canUpdateSummary = ! $summary || (int) ($summary->sleep ?? 0) <= 0;
+        if ($canUpdateSummary) {
+            $summary = Summary::query()->updateOrCreate(
+                [
+                    'company_id' => $company->id,
+                    'user_id' => $employee->user_id,
+                    'send_date' => $sendDate,
+                    'sleep_type' => $sleepType,
+                ],
+                $req
+            );
+        }
+
+        $req['summary_id'] = $summary?->id;
+
+        $file = Carbon::parse($sendDate)->format('/Y/m/d/').Str::padLeft($employee->user_id, 20, '0').'.json';
+
+        return [
+            'data' => $req,
+            'file' => $file,
+        ];
+    }
+
+    private function nullableInteger(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return is_numeric($value) ? (int) round((float) $value) : null;
+    }
+
+    private function nullableFloat(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return is_numeric($value) ? (float) $value : null;
     }
 
     private function applyFitToWorkPayload(Request $request, array &$req): void
@@ -1245,56 +1431,240 @@ class ApiController extends Controller
         return $heartRate >= 1 && $heartRate <= 240;
     }
 
-    private function resolveSleepMinutesFromMetricPayload(mixed $payload): int
+    private function resolveSleepStageMinutes(array $req): int
     {
-        if ($payload === null || $payload === '') {
-            return 0;
+        $total = 0;
+        foreach (['deep_sleep', 'light_sleep', 'rem_sleep'] as $key) {
+            $total += max(0, (int) round((float) ($req[$key] ?? 0)));
         }
 
-        $rows = [];
-        if (is_string($payload)) {
-            try {
-                $decoded = json_decode(trim($payload), true, 512, JSON_THROW_ON_ERROR);
-            } catch (JsonException) {
-                return 0;
-            }
-            if (!is_array($decoded)) {
-                return 0;
-            }
-            $rows = array_is_list($decoded) ? $decoded : (isset($decoded['data']) && is_array($decoded['data']) ? $decoded['data'] : [$decoded]);
-        } elseif (is_array($payload)) {
-            $rows = array_is_list($payload) ? $payload : (isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : [$payload]);
+        return $total;
+    }
+
+    private function resolveTrustedSleepMinutes(int $reportedMinutes, int $stageMinutes, int $metricMinutes): int
+    {
+        if ($reportedMinutes <= 0) {
+            return $metricMinutes > 0 ? $metricMinutes : $stageMinutes;
+        }
+
+        // Mi Band 10 can send a multi-session sleep payload. Keep summary sleep
+        // bounded to the selected shift window instead of summing every raw session.
+        if ($metricMinutes > 0 && $reportedMinutes > ($metricMinutes + 90)) {
+            return $metricMinutes;
+        }
+
+        if ($stageMinutes > 0 && $reportedMinutes > ($stageMinutes + 90)) {
+            return min($reportedMinutes, $stageMinutes + 60);
+        }
+
+        return $reportedMinutes;
+    }
+
+    /**
+     * @return array{minutes:int, main_start:int, main_end:int}
+     */
+    private function resolveWindowedSleepFromMetricPayload(mixed $payload, string $sleepType, string $deviceTime): array
+    {
+        $rows = $this->decodeMetricRows($payload);
+        if ($rows === []) {
+            return ['minutes' => 0, 'main_start' => 0, 'main_end' => 0];
+        }
+
+        try {
+            $baseDate = $deviceTime !== '' ? Carbon::parse($deviceTime) : Carbon::now();
+        } catch (Throwable) {
+            $baseDate = Carbon::now();
+        }
+
+        $baseDate = $baseDate->copy()->startOfDay();
+        $sleepType = strtolower($sleepType);
+
+        if ($sleepType === 'night') {
+            $mainStart = $baseDate->copy()->subDay()->setTime(18, 0)->timestamp;
+            $mainEnd = $baseDate->copy()->setTime(10, 0)->timestamp;
+            $restWindows = [
+                [
+                    $baseDate->copy()->subDay()->setTime(11, 0)->timestamp,
+                    $baseDate->copy()->subDay()->setTime(14, 0)->timestamp,
+                ],
+            ];
         } else {
-            return 0;
+            $mainStart = $baseDate->copy()->setTime(6, 0)->timestamp;
+            $mainEnd = $baseDate->copy()->setTime(18, 0)->timestamp;
+            $restWindows = [
+                [
+                    $baseDate->copy()->subDay()->setTime(23, 0)->timestamp,
+                    $baseDate->copy()->setTime(2, 0)->timestamp,
+                ],
+            ];
         }
 
-        $totalSeconds = 0;
+        $mainSeconds = 0;
+        $restSeconds = 0;
+        $detectedMainStart = 0;
+        $detectedMainEnd = 0;
+
         foreach ($rows as $row) {
             if (!is_array($row)) {
                 continue;
             }
-            $start = $this->normalizeMetricTs($row['sleepStart'] ?? $row['sleep_start'] ?? $row['start'] ?? 0);
-            $end = $this->normalizeMetricTs($row['sleepEnd'] ?? $row['sleep_end'] ?? $row['end'] ?? 0);
-            $interval = ($start > 0 && $end > $start) ? ($end - $start) : 0;
 
-            $light = $this->normalizeDurationToSeconds($row['lightSleepDuration'] ?? $row['light_sleep_duration'] ?? $row['light_sleep'] ?? $row['light'] ?? 0, $interval);
-            $deep = $this->normalizeDurationToSeconds($row['deepSleepDuration'] ?? $row['deep_sleep_duration'] ?? $row['deep_sleep'] ?? $row['deep'] ?? 0, $interval);
-            $rem = $this->normalizeDurationToSeconds($row['remSleepDuration'] ?? $row['rem_sleep_duration'] ?? $row['rem_sleep'] ?? $row['rem'] ?? 0, $interval);
-            $awake = $this->normalizeDurationToSeconds($row['awakeSleepDuration'] ?? $row['awake_sleep_duration'] ?? $row['awake_sleep'] ?? $row['awake'] ?? 0, $interval);
-            $total = $this->normalizeDurationToSeconds($row['totalSleepDuration'] ?? $row['total_sleep_duration'] ?? $row['total_sleep'] ?? $row['duration'] ?? $row['duration_seconds'] ?? 0, $interval);
+            $sleepStart = $this->normalizeMetricTs($row['sleepStart'] ?? $row['sleep_start'] ?? $row['start'] ?? 0);
+            $sleepEnd = $this->normalizeMetricTs($row['sleepEnd'] ?? $row['sleep_end'] ?? $row['end'] ?? 0);
+            if ($sleepStart <= 0 || $sleepEnd <= $sleepStart) {
+                continue;
+            }
 
-            $stage = $light + $deep + $rem + $awake;
-            $effective = $total > 0 ? $total : $stage;
-            if ($effective <= 0 && $interval > 0) {
-                $effective = $interval;
+            $intervalSeconds = max(1, $sleepEnd - $sleepStart);
+            $durationSeconds = $this->resolveSleepDurationSeconds($row, $intervalSeconds);
+            if ($durationSeconds <= 0) {
+                continue;
             }
-            if ($interval > 0 && $effective > (int) round($interval * 1.5)) {
-                $effective = $interval;
+
+            $mainOverlap = $this->weightedOverlapSeconds($sleepStart, $sleepEnd, $durationSeconds, $mainStart, $mainEnd);
+            if ($mainOverlap > 0) {
+                $mainSeconds += $mainOverlap;
+                $overlapStart = max($sleepStart, $mainStart);
+                $overlapEnd = min($sleepEnd, $mainEnd);
+                $detectedMainStart = $detectedMainStart === 0 ? $overlapStart : min($detectedMainStart, $overlapStart);
+                $detectedMainEnd = max($detectedMainEnd, $overlapEnd);
             }
-            $totalSeconds += max(0, $effective);
+
+            foreach ($restWindows as [$restStart, $restEnd]) {
+                $restSeconds += $this->weightedOverlapOutsideMainSeconds(
+                    $sleepStart,
+                    $sleepEnd,
+                    $durationSeconds,
+                    $restStart,
+                    $restEnd,
+                    [[$mainStart, $mainEnd]]
+                );
+            }
         }
 
-        return (int) round($totalSeconds / 60);
+        $restSeconds = min($restSeconds, 60 * 60);
+
+        return [
+            'minutes' => (int) round(($mainSeconds + $restSeconds) / 60),
+            'main_start' => $detectedMainStart,
+            'main_end' => $detectedMainEnd,
+        ];
+    }
+
+    private function resolveSleepDurationSeconds(array $row, int $intervalSeconds): int
+    {
+        $total = $this->normalizeDurationToSeconds(
+            $row['totalSleepDuration'] ?? $row['total_sleep_duration'] ?? $row['total_sleep'] ?? $row['duration'] ?? $row['duration_seconds'] ?? 0,
+            $intervalSeconds
+        );
+        if ($total > 0) {
+            return min($total, $intervalSeconds);
+        }
+
+        $stageSeconds = 0;
+        foreach ([
+            ['lightSleepDuration', 'light_sleep_duration', 'light_sleep', 'light'],
+            ['deepSleepDuration', 'deep_sleep_duration', 'deep_sleep', 'deep'],
+            ['remSleepDuration', 'rem_sleep_duration', 'rem_sleep', 'rem'],
+        ] as $keys) {
+            foreach ($keys as $key) {
+                if (!array_key_exists($key, $row)) {
+                    continue;
+                }
+                $stageSeconds += $this->normalizeDurationToSeconds($row[$key], $intervalSeconds);
+                break;
+            }
+        }
+
+        if ($stageSeconds > 0) {
+            return min($stageSeconds, $intervalSeconds);
+        }
+
+        return $intervalSeconds;
+    }
+
+    private function weightedOverlapSeconds(int $start, int $end, int $durationSeconds, int $windowStart, int $windowEnd): int
+    {
+        if ($end <= $windowStart || $start >= $windowEnd) {
+            return 0;
+        }
+
+        $overlap = max(0, min($end, $windowEnd) - max($start, $windowStart));
+        if ($overlap <= 0) {
+            return 0;
+        }
+
+        $intervalSeconds = max(1, $end - $start);
+        return (int) round($durationSeconds * ($overlap / $intervalSeconds));
+    }
+
+    private function weightedOverlapOutsideMainSeconds(
+        int $start,
+        int $end,
+        int $durationSeconds,
+        int $windowStart,
+        int $windowEnd,
+        array $mainWindows
+    ): int {
+        if ($end <= $windowStart || $start >= $windowEnd) {
+            return 0;
+        }
+
+        $overlapStart = max($start, $windowStart);
+        $overlapEnd = min($end, $windowEnd);
+        $overlapSeconds = max(0, $overlapEnd - $overlapStart);
+        if ($overlapSeconds <= 0) {
+            return 0;
+        }
+
+        foreach ($mainWindows as $mainWindow) {
+            if (!is_array($mainWindow) || count($mainWindow) < 2) {
+                continue;
+            }
+
+            $mainStart = (int) $mainWindow[0];
+            $mainEnd = (int) $mainWindow[1];
+            $mainOverlap = max(0, min($overlapEnd, $mainEnd) - max($overlapStart, $mainStart));
+            $overlapSeconds -= $mainOverlap;
+        }
+
+        if ($overlapSeconds <= 0) {
+            return 0;
+        }
+
+        $intervalSeconds = max(1, $end - $start);
+        return (int) round($durationSeconds * ($overlapSeconds / $intervalSeconds));
+    }
+
+    private function decodeMetricRows(mixed $payload): array
+    {
+        if ($payload === null || $payload === '') {
+            return [];
+        }
+
+        if (is_string($payload)) {
+            try {
+                $decoded = json_decode(trim($payload), true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                return [];
+            }
+        } else {
+            $decoded = $payload;
+        }
+
+        if (!is_array($decoded) || $decoded === []) {
+            return [];
+        }
+
+        if (array_is_list($decoded)) {
+            return $decoded;
+        }
+
+        if (isset($decoded['data']) && is_array($decoded['data'])) {
+            return $decoded['data'];
+        }
+
+        return [$decoded];
     }
 
     private function normalizeDurationToSeconds(mixed $value, int $intervalSeconds): int
@@ -1303,12 +1673,12 @@ class ApiController extends Controller
             return 0;
         }
 
-        $duration = (int) round((float) $value);
+        $duration = (int) max(0, round((float) $value));
         if ($duration <= 0) {
             return 0;
         }
 
-        if ($duration < 1000) {
+        if ($duration < 1000 && ($intervalSeconds <= 0 || ($duration * 60) <= (int) round($intervalSeconds * 1.5))) {
             $duration *= 60;
         }
 
@@ -1324,6 +1694,7 @@ class ApiController extends Controller
         if (!is_numeric($value)) {
             return 0;
         }
+
         $ts = (int) $value;
         if ($ts <= 0) {
             return 0;
@@ -1331,6 +1702,7 @@ class ApiController extends Controller
         if ($ts > 9999999999) {
             return (int) floor($ts / 1000);
         }
+
         return $ts;
     }
 
@@ -1343,6 +1715,18 @@ class ApiController extends Controller
         $hours = intdiv($minutes, 60);
         $mins = $minutes % 60;
         return sprintf('%d:%02d', $hours, $mins);
+    }
+
+    private function minutesToTicketSleepText(int $minutes): string
+    {
+        if ($minutes <= 0) {
+            return '-';
+        }
+
+        $hours = intdiv($minutes, 60);
+        $mins = $minutes % 60;
+
+        return sprintf('%d jam %02d menit', $hours, $mins);
     }
 
     public function debugDetailPayload(Request $request)
