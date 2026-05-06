@@ -1222,14 +1222,13 @@ class ApiController extends Controller
         $reportedSleepStart = $this->normalizeMetricTs($req['sleep_start'] ?? 0);
         if ($metricSleepStart > 0 && (
             $reportedSleepStart <= 0
-            || $reportedSleepStart < ($metricSleepStart - 3600)
-            || $reportedSleepStart > ($metricSleepStart + 3600)
+            || abs($reportedSleepStart - $metricSleepStart) > 1200
         )) {
             $req['sleep_start'] = $metricSleepStart;
         }
         $metricSleepEnd = (int) ($metricSleep['main_end'] ?? 0);
         $reportedSleepEnd = $this->normalizeMetricTs($req['sleep_end'] ?? 0);
-        if ($metricSleepEnd > 0 && ($reportedSleepEnd <= 0 || $reportedSleepEnd > ($metricSleepEnd + 3600))) {
+        if ($metricSleepEnd > 0 && ($reportedSleepEnd <= 0 || abs($reportedSleepEnd - $metricSleepEnd) > 1200)) {
             $req['sleep_end'] = $metricSleepEnd;
         }
         $req['sleep_text'] = $this->minutesToSleepText((int) ($req['sleep'] ?? 0));
@@ -1347,15 +1346,14 @@ class ApiController extends Controller
         $reportedSleepStart = $this->normalizeMetricTs($req['sleep_start'] ?? 0);
         if ($metricSleepStart > 0 && (
             $reportedSleepStart <= 0
-            || $reportedSleepStart < ($metricSleepStart - 3600)
-            || $reportedSleepStart > ($metricSleepStart + 3600)
+            || abs($reportedSleepStart - $metricSleepStart) > 1200
         )) {
             $req['sleep_start'] = $metricSleepStart;
         }
 
         $metricSleepEnd = (int) ($metricSleep['main_end'] ?? 0);
         $reportedSleepEnd = $this->normalizeMetricTs($req['sleep_end'] ?? 0);
-        if ($metricSleepEnd > 0 && ($reportedSleepEnd <= 0 || $reportedSleepEnd > ($metricSleepEnd + 3600))) {
+        if ($metricSleepEnd > 0 && ($reportedSleepEnd <= 0 || abs($reportedSleepEnd - $metricSleepEnd) > 1200)) {
             $req['sleep_end'] = $metricSleepEnd;
         }
         $req['sleep_text'] = $this->minutesToSleepText((int) ($req['sleep'] ?? 0));
@@ -1493,9 +1491,10 @@ class ApiController extends Controller
             return $metricMinutes > 0 ? $metricMinutes : $stageMinutes;
         }
 
-        // Mi Band 10 can send a multi-session sleep payload. Keep summary sleep
-        // bounded to the selected shift window instead of summing every raw session.
-        if ($metricMinutes > 0 && $reportedMinutes > ($metricMinutes + 90)) {
+        // Keep summary sleep aligned with the same metric window used by the
+        // chart. Mi Band 10 may report a broader total while the graph uses
+        // the selected sleep session, so a smaller tolerance prevents drift.
+        if ($metricMinutes > 0 && abs($reportedMinutes - $metricMinutes) > 20) {
             return $metricMinutes;
         }
 

@@ -34,7 +34,7 @@ class MobileNotificationApiTest extends TestCase
             'user_id' => $user->id,
             'username' => 'operator.a',
             'title' => 'Briefing Pagi',
-            'message_html' => '<p>Gunakan APD lengkap.</p>',
+            'message_html' => '<style>.urgent{color:#dc2626;font-weight:700}</style><p class="urgent">Gunakan APD lengkap.</p>',
             'status' => 0,
             'published_at' => Carbon::now()->subMinutes(5),
         ]);
@@ -65,7 +65,18 @@ class MobileNotificationApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('meta.unread_count', 1)
             ->assertJsonCount(2, 'data')
-            ->assertJsonPath('data.0.title', 'Briefing Pagi');
+            ->assertJsonPath('data.0.title', 'Briefing Pagi')
+            ->assertJsonPath('data.0.content_format', 'html_css')
+            ->assertJsonPath('data.0.rendering.supports_css', true)
+            ->assertJsonStructure([
+                'data' => [[
+                    'message_html',
+                    'message_html_full',
+                    'message_css',
+                    'rendering',
+                ]],
+            ])
+            ->assertSee('.urgent', false);
     }
 
     public function test_read_endpoint_marks_notification_as_read(): void
