@@ -43,7 +43,7 @@ class AuthController extends Controller
             ]);
 
             $input = trim((string) $request->input('email', ''));
-            $password = (string) $request->input('password', '');
+            $password = trim((string) $request->input('password', ''));
             $companyCode = trim((string) $request->header('company', ''));
 
             // Try login by email or NIK
