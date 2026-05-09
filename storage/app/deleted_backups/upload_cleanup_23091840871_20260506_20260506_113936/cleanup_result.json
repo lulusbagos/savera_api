@@ -1,0 +1,32 @@
+{
+  "nik": "23091840871",
+  "date": "2026-05-06",
+  "backup_dir": "D:\\APPS\\savera-api\\savera-api\\storage\\app\\deleted_backups\\upload_cleanup_23091840871_20260506_20260506_113936",
+  "employees": [
+    {
+      "id": 1241,
+      "code": "23091840871",
+      "fullname": "MUHAMAD ANDRYAN RASYIDD",
+      "user_id": 185,
+      "device_id": 1979,
+      "company_id": 2,
+      "mac_address": "04:34:C3:93:10:4F"
+    }
+  ],
+  "summaries_deleted": 1,
+  "summary_ids": [
+    261380
+  ],
+  "ingest_audit_deleted": 0,
+  "jobs_deleted": 0,
+  "files_deleted": [
+    "storage\\app\\mobile_metrics\\data_activity\\2026\\05\\06\\00000000000000000185.json",
+    "storage\\app\\mobile_metrics\\data_heart_rate_manual\\2026\\05\\06\\00000000000000000185.json",
+    "storage\\app\\mobile_metrics\\data_heart_rate_max\\2026\\05\\06\\00000000000000000185.json",
+    "storage\\app\\mobile_metrics\\data_heart_rate_resting\\2026\\05\\06\\00000000000000000185.json",
+    "storage\\app\\mobile_metrics\\data_sleep\\2026\\05\\06\\00000000000000000185.json",
+    "storage\\app\\mobile_metrics\\data_spo2\\2026\\05\\06\\00000000000000000185.json",
+    "storage\\app\\mobile_metrics\\data_stress\\2026\\05\\06\\00000000000000000185.json"
+  ],
+  "files_missing": []
+}

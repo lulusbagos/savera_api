@@ -1,0 +1,442 @@
+{
+    "app/Helpers/LogHelper.php": {
+        "hash": "4b0e6b4c9a9b3c1a8da92c55ab51bfd4d739ebb865548bd1127f1504e5b3b71e",
+        "mtime": 1776813933
+    },
+    "app/Helpers/proxy_helper.php": {
+        "hash": "cb32cf546bcca0ed0072f04c98e7b1e35cfa2a29d78979879b865acaee3e9850",
+        "mtime": 1761190653
+    },
+    "app/Http/Controllers/ApiController.php": {
+        "hash": "30c9ef792ab4cc70226097951ef773b79b16877c2a577e2515f0a71448dbbda9",
+        "mtime": 1778199350
+    },
+    "app/Http/Controllers/ApiController.php.bak": {
+        "hash": "4feeaca0f26b67b5edb6f32569c1e079596239e99709232ac7bf80199c5b4fc7",
+        "mtime": 1727770432
+    },
+    "app/Http/Controllers/ApiController.php.bak2": {
+        "hash": "fee4d8349024ddfb685d958b9c32ea097dc7a474356ea25e7883fd39af985fa9",
+        "mtime": 1740607030
+    },
+    "app/Http/Controllers/ApiController.php.bak3": {
+        "hash": "aee27b56484127d034d288489025a013c364dbac71ada00fab8dd44646d38a93",
+        "mtime": 1754207141
+    },
+    "app/Http/Controllers/ArticleController.php": {
+        "hash": "0f3002b93cf13a1fa9ea7a9b62489d3290692bcc043349759770ba00ce15f99f",
+        "mtime": 1777885809
+    },
+    "app/Http/Controllers/AuthController.php": {
+        "hash": "bb26b235156e84c39ddee18585cd5dbb4b52d55fe68d0bfafd4373dd0f4c681f",
+        "mtime": 1778221643
+    },
+    "app/Http/Controllers/Controller.php": {
+        "hash": "25d1c1ef8e6cc8a376553faacfba2b07d9dfaee9bdbb84f14f77517580e9deb1",
+        "mtime": 1721086760
+    },
+    "app/Http/Controllers/GoogleController.php": {
+        "hash": "2f8738974fadac277cf61ca521f52a3db776185f73ba407d6467c3d06e1d1a3e",
+        "mtime": 1776849625
+    },
+    "app/Http/Controllers/HealthCheckController.php": {
+        "hash": "fda58975abb9ecc3fe8bd892ee6e6c7088fdef3f73f3a57c83643fab24856b1e",
+        "mtime": 1776849969
+    },
+    "app/Http/Controllers/LogDashboardController.php": {
+        "hash": "4fabdf8561f54273d9dcbe19574ee9727d0f524a1740ea0659664baaca238a0e",
+        "mtime": 1777957686
+    },
+    "app/Http/Controllers/MobileFitToWorkController.php": {
+        "hash": "f4892685e6351cbbca05dc9539cba60affde799025852e2c8d58c20a316fa7e2",
+        "mtime": 1777770313
+    },
+    "app/Http/Controllers/MobileNetworkController.php": {
+        "hash": "e27a714144de2a95867f10699b846c21ad71837ada8902ea07475a987d7eea66",
+        "mtime": 1777864301
+    },
+    "app/Http/Controllers/MobileNotificationController.php": {
+        "hash": "57583a56c334b539ddd9e58a2137894385b37f575373aca8c2b06fab770ed23d",
+        "mtime": 1778025750
+    },
+    "app/Http/Controllers/P5mController.php": {
+        "hash": "3496ee4ebf698b8ed99abfafae4845ed6409d0d4c089379fc8b1923fd9e13dd5",
+        "mtime": 1777952870
+    },
+    "app/Http/Controllers/V2/WearableIngestController.php": {
+        "hash": "4bb60e57a03fc6fe457b44e89883c082ad06c4662fd5e571f38e6979adaa72fa",
+        "mtime": 1778199252
+    },
+    "app/Http/Controllers/bacupapicontroler.txt": {
+        "hash": "50f135c0fdd01e9c7c9c967a9f136b114a016c0ee1ca047b3130850931a1add9",
+        "mtime": 1753318116
+    },
+    "app/Http/Middleware/AttachMobileNetworkConfig.php": {
+        "hash": "bd3dfd4dd853861a79e5f3c2988b89d401eba16c43c93334cd364d3bc8f6f1b2",
+        "mtime": 1777863742
+    },
+    "app/Http/Middleware/CheckApiToken.php": {
+        "hash": "4077c426176585814b520186485c57ce3a26ed1b5d8b6fe7e826fb003c61703c",
+        "mtime": 1777339389
+    },
+    "app/Http/Middleware/LogApiRequest.php": {
+        "hash": "7e9fc8eec3267ebc954511cd05c3be67c24434e821f4e6f0825eb144d6ab06e1",
+        "mtime": 1777541881
+    },
+    "app/Http/Middleware/SimulateApiLatency.php": {
+        "hash": "3317196f670814c3b7664b2608703651dd518b0dfd849ca7c781501d2dd6b811",
+        "mtime": 1776817564
+    },
+    "app/Jobs/StoreUserMetricsJob.php": {
+        "hash": "442a3428eff25b973d034ea365dbab9d633095be7d004098abef413430a323ce",
+        "mtime": 1777861944
+    },
+    "app/Models/Article.php": {
+        "hash": "3a9e43b19644147e98c3bc26859b8c8b854c7816977ef291513eea47228c42ca",
+        "mtime": 1777339389
+    },
+    "app/Models/Banner.php": {
+        "hash": "ccbd302c63703508f06a8393a71d682132170e47365536371280411701ceb63c",
+        "mtime": 1737233850
+    },
+    "app/Models/Company.php": {
+        "hash": "79c17b3df12cac94b8ffb42daa3225f6ffc6df039a1284e3538e757316e37499",
+        "mtime": 1777339389
+    },
+    "app/Models/Department.php": {
+        "hash": "099285717aaf14ffb40c85f8f5c6fd2129bbbaab07a748893edfaa8fbd3f9499",
+        "mtime": 1777339389
+    },
+    "app/Models/Device.php": {
+        "hash": "1148396bbfd85c655701384ef2655b84e38ba6c9fcb60b64959b194bec88a1fd",
+        "mtime": 1777339389
+    },
+    "app/Models/Employee.php": {
+        "hash": "61c1f47ff6834d85e280fafbaa4ec974b59efa470e0465937f00cb331e4775b3",
+        "mtime": 1777339389
+    },
+    "app/Models/IngestAudit.php": {
+        "hash": "7b81dcb97b8b32c26149d1a1a348b0f18ce2a27ad8084a51bcaa9918df3e9de7",
+        "mtime": 1777621193
+    },
+    "app/Models/Leave.php": {
+        "hash": "ba7e57d47c1d663d5bbcbb765c53da14e06733a141400e0993d501237dbd1748",
+        "mtime": 1740606415
+    },
+    "app/Models/Letter.php": {
+        "hash": "54cbd1aaa058fbbeda62f6ac60ceae7177f3a60123c5abd11f3f37d74b88114c",
+        "mtime": 1740606415
+    },
+    "app/Models/Mess.php": {
+        "hash": "8288544e5fb6744826db6877585a1d0dccdcab80f660ab5b9b88991fd22cb090",
+        "mtime": 1738004975
+    },
+    "app/Models/MobileNotification.php": {
+        "hash": "b60140f49268b8dfe79816fb775af673afa7a351358c0f855a77c37979f92c70",
+        "mtime": 1777874293
+    },
+    "app/Models/P5m.php": {
+        "hash": "1e76f2f42766ec50a15f75c99babbe9bee2583b86f9c32165d786d11865f296f",
+        "mtime": 1740606415
+    },
+    "app/Models/P5mPoint.php": {
+        "hash": "afcee09998b0b3f9665a1fd967ab3499284833c3a7869b9e2d50a1c2e3fc8d91",
+        "mtime": 1737280393
+    },
+    "app/Models/Quiz.php": {
+        "hash": "8d9fd455bd5ba62382c65328e71495302d00023a836c2bab85ead3a705138c18",
+        "mtime": 1740971808
+    },
+    "app/Models/QuizItem.php": {
+        "hash": "3024ba1ea0ba30a4253d4683275fa3bdf73f4ddf4f12040d8d1da1af97f4791a",
+        "mtime": 1737280421
+    },
+    "app/Models/Roster.php": {
+        "hash": "eccc1cc007972675875c0743ca90f5a0e3b6464b6298d21c2a5b72282d2e08ac",
+        "mtime": 1727578909
+    },
+    "app/Models/Shift.php": {
+        "hash": "171b3cf3b741bc1b9e6733f4d6a6ca2fc0ff9436885af2f47563d84aa734edec",
+        "mtime": 1727579024
+    },
+    "app/Models/Summary.php": {
+        "hash": "84ebff25b55ad205cf2d96ae2603d946543f79bd14344cda4f79b4c3b09361ad",
+        "mtime": 1777770200
+    },
+    "app/Models/Ticket.php": {
+        "hash": "43cd71faa1c6342d2dcb9cc2887ecd635cdd2fa2eff489008156c79c932d76d5",
+        "mtime": 1740606415
+    },
+    "app/Models/User.php": {
+        "hash": "fe3318cc875121e77772c1ab69aa43d9b66d24460ed8a07fc65ef2e6da766d33",
+        "mtime": 1777959543
+    },
+    "app/Providers/AppServiceProvider.php": {
+        "hash": "46bada8d971b9ff552de6eef361e2f5d9b262385f786e305e49e6c0d21890ac8",
+        "mtime": 1776671941
+    },
+    "app/Services/HealthService.php": {
+        "hash": "0199654ad651ad05923f8a2e351ae0b38aa5d4854c9e77951c2160c9c73d2aa4",
+        "mtime": 1776850628
+    },
+    "app/Services/MobileLoadSimulationService.php": {
+        "hash": "3621752a78c3b2c51488bbcdf6d1aae1c3713654dfdd71b659264ba7a6c59fd8",
+        "mtime": 1776850647
+    },
+    "app/Services/MobileMetricFileWriter.php": {
+        "hash": "4a0e0678f9c3ec29ab53f5f57432721b6434e98a4c48956a0bd8b639a1bc293e",
+        "mtime": 1777865238
+    },
+    "app/Services/MobileMetricPayloadNormalizer.php": {
+        "hash": "8e53f274edd7f6c5904931837184e9b24a83b94328354771d45d0b03bb34bd4f",
+        "mtime": 1777938496
+    },
+    "app/Support/MobileIngestRuntime.php": {
+        "hash": "84012843d966de5fa4697f22728baccaabd55a498e6890f0bbb9d7b736127fff",
+        "mtime": 1776850564
+    },
+    "app/Traits/Blameable.php": {
+        "hash": "901b2008b2dda8954cb62af51e48907d70f99b8dc4a753eb3590aea7a435d221",
+        "mtime": 1721393120
+    },
+    "bootstrap/app.php": {
+        "hash": "3a4e9e40cee2d27b67df7e88b3a2410196ee96829373359f6a471682a29fadaf",
+        "mtime": 1776817564
+    },
+    "bootstrap/cache/pacCBF6.tmp": {
+        "hash": "e590f10db8e13d30cbd1c2c48d6e05cd01b3efc5bd4c159bcd78958bfd8d35ae",
+        "mtime": 1777874600
+    },
+    "bootstrap/cache/packages.php": {
+        "hash": "e590f10db8e13d30cbd1c2c48d6e05cd01b3efc5bd4c159bcd78958bfd8d35ae",
+        "mtime": 1778038798
+    },
+    "bootstrap/cache/services.php": {
+        "hash": "bd3de1a57ac1b1f519e1c3555df9f8d4672e06106ca0df5f3a40735d3033bd9a",
+        "mtime": 1778038798
+    },
+    "bootstrap/providers.php": {
+        "hash": "2ef405f988a6ef3f5222bfbdd89352a6ad7b2e9e21aa25e236ac5dff58358953",
+        "mtime": 1721086760
+    },
+    "config/app.php": {
+        "hash": "5a44387ebeedf16d775122372f5709e2fd76e5bf50f3d36708554721001c82f9",
+        "mtime": 1721086760
+    },
+    "config/auth.php": {
+        "hash": "d5bd78db15ec31df30248bb56dff53d385d7826d9ab0cfb2846dc6ce06d531c0",
+        "mtime": 1721086760
+    },
+    "config/cache.php": {
+        "hash": "dc3a64749bc19946ba6a054be0b67ae8c450c9401799cb176ac0a0b8d4756664",
+        "mtime": 1721086760
+    },
+    "config/cors.php": {
+        "hash": "7a1b9af42b73b20126219eca484ea7eb02c25a5d179eab1ac00251779d808c49",
+        "mtime": 1731986167
+    },
+    "config/database.php": {
+        "hash": "3eb14569a11a1dbbd4ee6d1ab77c40c345d27ce2ecdcecc4545ff73e7b7987de",
+        "mtime": 1777874303
+    },
+    "config/filesystems.php": {
+        "hash": "35ef09f9ab93de4c249cbb69cbd7895a242191201d72309d1ff78717a575b6b3",
+        "mtime": 1776850568
+    },
+    "config/logging.php": {
+        "hash": "6e0885a09b96f9e3e9ccfae9e536da3c33dbd53a7710a518c05ac0f2b6808fb8",
+        "mtime": 1721086760
+    },
+    "config/mail.php": {
+        "hash": "fc1fd1fade3ab4d6e0baddf86114711f35beb0880be836ca1c20134e745d72af",
+        "mtime": 1721086760
+    },
+    "config/mobile_ingest.php": {
+        "hash": "c712ebd7adefa4ba5455af89940cab226273235fa2fbc0084fab6ba2f33369eb",
+        "mtime": 1776850558
+    },
+    "config/mobile_network.php": {
+        "hash": "3d8859a05f297c06f3f600501c63b03f49fd2b58e4f24a8a5bdc33f3797119ab",
+        "mtime": 1776816485
+    },
+    "config/queue.php": {
+        "hash": "a185a3e86b65db26938204f4f50cf0c0ca99974e9926b9cdcef6b7743feea482",
+        "mtime": 1721086760
+    },
+    "config/sanctum.php": {
+        "hash": "a3bf731d55289ab9f9c0500ec01b949a12cab6eba3f763adb4eb223ee335aedb",
+        "mtime": 1721418520
+    },
+    "config/services.php": {
+        "hash": "2226be3fa0e560fc8cd628f3e8f50fcd78639a24375f5e931d0c656eaf1d4ce8",
+        "mtime": 1721086760
+    },
+    "config/session.php": {
+        "hash": "d96b4c3d215ad3d0e6570c8620d1b4dd603925c2de9036792ca93414c5cc3ab6",
+        "mtime": 1721086760
+    },
+    "config/view.php": {
+        "hash": "eb5b72cf37f0bc3d80cbdab5c0be73807658404ae14bbbcfa8183913ac0b7d39",
+        "mtime": 1753529801
+    },
+    "database/migrations/0001_01_01_000000_create_users_table.php": {
+        "hash": "10d79883bc08ce46510f9ad8b1830b4d06d586dc56ae2c8bac3b3e491f69a90f",
+        "mtime": 1721086760
+    },
+    "database/migrations/0001_01_01_000001_create_cache_table.php": {
+        "hash": "20f769d3c11748c1cc42c41cd3789b0b9b2cd0db44ee22d378addac3ff8aed4f",
+        "mtime": 1721086760
+    },
+    "database/migrations/0001_01_01_000002_create_jobs_table.php": {
+        "hash": "7c9c712adf4091c87bf2612f4d0dccdfa1df4501553e4ac068b83d7bd5462fa5",
+        "mtime": 1721086760
+    },
+    "database/migrations/2024_07_19_024841_create_personal_access_tokens_table.php": {
+        "hash": "5a9c64d94d29ec6c435625b8a4d0d3c898b9bad042b5a3ac64f11d39c2b3610f",
+        "mtime": 1721418520
+    },
+    "database/migrations/2024_09_24_021901_create_companies_table.php": {
+        "hash": "e20d43ce6f28301da4e64b5cd853ec59265fb192cb9f5644bcc418db54ae2510",
+        "mtime": 1727575959
+    },
+    "database/migrations/2024_09_24_021959_create_departments_table.php": {
+        "hash": "8de6c5659b75a941bd27bec6f40e80bfe072a6a81aecb122f50e4f7e68683c5f",
+        "mtime": 1727575959
+    },
+    "database/migrations/2024_09_24_022007_create_shifts_table.php": {
+        "hash": "6093afe1dbdbc52c20a7683c13e519ff6090eaf8006b64c651d86bd6199371fd",
+        "mtime": 1727575959
+    },
+    "database/migrations/2024_09_24_022014_create_messes_table.php": {
+        "hash": "193c10e13366d12638b2eed0c93e30b21ed5ca552622731c06abed770018071e",
+        "mtime": 1727575959
+    },
+    "database/migrations/2024_09_24_022022_create_employees_table.php": {
+        "hash": "96ca0410e9c383ad909fe60ebc348ac9cc3f32f5367927ad700bf466cddd1c94",
+        "mtime": 1738004999
+    },
+    "database/migrations/2024_09_24_022028_create_devices_table.php": {
+        "hash": "c15ca0b17175836df67992f498076c21a69ac29ef935f4b86d8505447b093e3b",
+        "mtime": 1727767191
+    },
+    "database/migrations/2024_09_24_022033_create_summaries_table.php": {
+        "hash": "4eb6dc105bab2e46ec3acd1e863fbb7014fd06fa72cc05c82f6e3c3f17890077",
+        "mtime": 1738005013
+    },
+    "database/migrations/2024_09_27_083139_create_rosters_table.php": {
+        "hash": "7ac4bdf5b3fa3a5729645a6fc24f8ce2f2b937dc3cd037c3469ea85f9b9f042e",
+        "mtime": 1727640285
+    },
+    "database/migrations/2025_01_18_170529_create_leaves_table.php": {
+        "hash": "2470f6a07ac4ae48e40dbf0224683a72acf76902e3890e6269042dd540344e50",
+        "mtime": 1740606285
+    },
+    "database/migrations/2025_01_18_170543_create_tickets_table.php": {
+        "hash": "b2d1fc52745af8ea69e43729d4e6699afa9a5d860a6291d681ae1a420999eae9",
+        "mtime": 1740606285
+    },
+    "database/migrations/2025_01_18_170550_create_banners_table.php": {
+        "hash": "8c904f8c680658ee794af02708bd41772ad37e7b913afe6acd9ba14bb6fe48e2",
+        "mtime": 1737245695
+    },
+    "database/migrations/2025_01_18_170556_create_articles_table.php": {
+        "hash": "54fee8e8b1a3dd160c680a54b2eae0dfb675e9a8304f0ad2f0c5a358d127f084",
+        "mtime": 1740531210
+    },
+    "database/migrations/2025_01_18_170602_create_quizzes_table.php": {
+        "hash": "91dfb368907fcd654b9e8c42530e70457de72addc929660285e0216bd92e181d",
+        "mtime": 1740971759
+    },
+    "database/migrations/2025_01_18_170610_create_p5m_table.php": {
+        "hash": "fbf0bf7a1d8315c7f008b5630298b6c6a1febeeddab060af86fca32eec7491d5",
+        "mtime": 1740606285
+    },
+    "database/migrations/2025_02_20_095025_create_letters_table.php": {
+        "hash": "cbf03619d4cbd6bfc511b28b42f30d0390bd387024fb009859759bdf1a62afc8",
+        "mtime": 1740606285
+    },
+    "database/migrations/2026_03_26_150000_add_api_performance_indexes.php": {
+        "hash": "d980056dd54ead66777c5c575696b44380a3ae6fdab84219bf3dcf50635f1fb5",
+        "mtime": 1774508491
+    },
+    "database/migrations/2026_04_20_010000_add_ingest_and_admin_indexes.php": {
+        "hash": "2ad4508231b1edd1286ff0ffbc091a3e7db7fa162399b254efdccfdd7588d5a0",
+        "mtime": 1776666803
+    },
+    "database/migrations/2026_04_23_100000_create_mobile_notifications_table.php": {
+        "hash": "2fc3dd8e13ec8353a0a737fb51e45b93d7e4d02f3a600fa004301e23222ec7b2",
+        "mtime": 1776908578
+    },
+    "database/migrations/2026_04_27_110750_add_extra_columns_to_articles_table.php": {
+        "hash": "175b75165af6c32a91b111cfa4a60e61ce6e82609f722124ec788b279f784a2f",
+        "mtime": 1777339389
+    },
+    "database/migrations/2026_04_28_120000_align_master_tables_for_indexim_integration.php": {
+        "hash": "b75955a444bdb57d9eaf4cebeecb13b26aba7b2c67a11b5440e8868084f29cf3",
+        "mtime": 1777339389
+    },
+    "database/migrations/2026_05_01_150000_create_ingest_audit_table.php": {
+        "hash": "c227edd67bd4bef22a9c5f82ada0ed8904ea052be6b0e36dd517564f0173f131",
+        "mtime": 1777621207
+    },
+    "database/migrations/2026_05_03_090000_add_fit_to_work_columns_to_summaries_table.php": {
+        "hash": "070371e6d94b3cd81825bb507dbc13013f0295d4536a57163b7b97831d136349",
+        "mtime": 1777770346
+    },
+    "database/migrations/2026_05_04_111500_add_company_scope_index_to_summaries_table.php": {
+        "hash": "c22ac1255e073ca0e4aa80e9e1024668ab61300bda4840843b82d97cbe2886e1",
+        "mtime": 1777862018
+    },
+    "database/migrations/2026_05_04_140000_add_source_columns_to_mobile_notifications_table.php": {
+        "hash": "dcfccff41db5cc3b09e9d6cea2d24ebfe46c2d4ada8fe3f514a4421aee0a5b61",
+        "mtime": 1777874287
+    },
+    "database/migrations/2026_05_05_170000_add_last_login_columns_to_users_table.php": {
+        "hash": "e1d385b78061bbcdeed84de610e46033dbac40d6c38b4a88983059cb6af8007e",
+        "mtime": 1777957583
+    },
+    "database/migrations/2026_05_05_180000_add_sleep_uploader_flag_to_users_table.php": {
+        "hash": "a062399f90d1d433639a32cd9f1519e769876300d80147211ef498fd295a2cc4",
+        "mtime": 1777959519
+    },
+    "resources/css/app.css": {
+        "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mtime": 1721086760
+    },
+    "resources/js/app.js": {
+        "hash": "cf6dab196c721f6911ff99cc4f910897f978599a2d289971a316a5fc33091f94",
+        "mtime": 1721086760
+    },
+    "resources/js/bootstrap.js": {
+        "hash": "6fd9fc82e68fa915a882f4e227b9faacbe7bfd66cb953c628840e83bda6b72f4",
+        "mtime": 1721086760
+    },
+    "resources/views/docs.blade.php": {
+        "hash": "baf19e2d7da79a8a1cd262fb692a6450688b1f1ed1cf5d712007a598facd37c5",
+        "mtime": 1777520543
+    },
+    "resources/views/sleep.blade.php": {
+        "hash": "8058e41ee284e7a44658e18aed5a2140c0e5207ffb50b0e850eae1b3ac6fc38f",
+        "mtime": 1729504390
+    },
+    "resources/views/test_write.txt": {
+        "hash": "cd2eca3535741f27a8ae40c31b0c41d4057a7a7b912b33b9aed86485d1c84676",
+        "mtime": 1764656606
+    },
+    "resources/views/welcome.blade.php": {
+        "hash": "8da7faaddf26a1495bae854670ce5c15e48340d1e29147cd5a27a9f4967b3942",
+        "mtime": 1778027979
+    },
+    "routes/api.php": {
+        "hash": "8378565a81978b59f9b75c417b022a0ba85e0d51062d470afefae5ad25c92aa1",
+        "mtime": 1777946451
+    },
+    "routes/console.php": {
+        "hash": "69ee54fb1928c72962250995c045a59a095eae22660f708b8d3c2c88259f4743",
+        "mtime": 1777886843
+    },
+    "routes/web.php": {
+        "hash": "95616b83af028498c85bb242d7ef9fa62b725488f0be16a24aebdabdb38da453",
+        "mtime": 1777339389
+    }
+}

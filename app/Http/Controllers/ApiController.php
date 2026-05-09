@@ -1487,21 +1487,16 @@ class ApiController extends Controller
 
     private function resolveTrustedSleepMinutes(int $reportedMinutes, int $stageMinutes, int $metricMinutes): int
     {
-        if ($reportedMinutes <= 0) {
-            return $metricMinutes > 0 ? $metricMinutes : $stageMinutes;
-        }
-
-        // Keep summary sleep aligned with the same metric window used by the
-        // chart. Mi Band 10 may report a broader total while the graph uses
-        // the selected sleep session, so a smaller tolerance prevents drift.
-        if ($metricMinutes > 0 && abs($reportedMinutes - $metricMinutes) > 20) {
+        if ($metricMinutes > 0) {
             return $metricMinutes;
         }
 
-        if ($stageMinutes > 0 && $reportedMinutes > ($stageMinutes + 90)) {
-            return min($reportedMinutes, $stageMinutes + 60);
+        if ($stageMinutes > 0) {
+            return $stageMinutes;
         }
 
+        // New mobile sends reported sleep as wearable total. If there is no
+        // stage/metric detail yet, keep it as a last-resort legacy fallback.
         return $reportedMinutes;
     }
 
@@ -1598,14 +1593,8 @@ class ApiController extends Controller
 
     private function resolveSleepDurationSeconds(array $row, int $intervalSeconds): int
     {
-        $total = $this->normalizeDurationToSeconds(
-            $row['totalSleepDuration'] ?? $row['total_sleep_duration'] ?? $row['total_sleep'] ?? $row['duration'] ?? $row['duration_seconds'] ?? 0,
-            $intervalSeconds
-        );
-        if ($total > 0) {
-            return min($total, $intervalSeconds);
-        }
-
+        $rawTotal = $row['totalSleepDuration'] ?? $row['total_sleep_duration'] ?? $row['total_sleep'] ?? $row['duration'] ?? $row['duration_seconds'] ?? 0;
+        $preferSeconds = is_numeric($rawTotal) && (float) $rawTotal > 1000;
         $stageSeconds = 0;
         foreach ([
             ['lightSleepDuration', 'light_sleep_duration', 'light_sleep', 'light'],
@@ -1616,7 +1605,9 @@ class ApiController extends Controller
                 if (!array_key_exists($key, $row)) {
                     continue;
                 }
-                $stageSeconds += $this->normalizeDurationToSeconds($row[$key], $intervalSeconds);
+                $stageSeconds += $preferSeconds
+                    ? $this->normalizeSecondsDuration($row[$key], $intervalSeconds)
+                    : $this->normalizeDurationToSeconds($row[$key], $intervalSeconds);
                 break;
             }
         }
@@ -1625,7 +1616,35 @@ class ApiController extends Controller
             return min($stageSeconds, $intervalSeconds);
         }
 
+        $total = $preferSeconds
+            ? $this->normalizeSecondsDuration($rawTotal, $intervalSeconds)
+            : $this->normalizeDurationToSeconds($rawTotal, $intervalSeconds);
+        if ($total > 0) {
+            $rawAwake = $row['awakeSleepDuration'] ?? $row['awake_sleep_duration'] ?? $row['awake_sleep'] ?? $row['awake'] ?? 0;
+            $awakeSeconds = $preferSeconds
+                ? $this->normalizeSecondsDuration($rawAwake, $intervalSeconds)
+                : $this->normalizeDurationToSeconds($rawAwake, $intervalSeconds);
+            if ($awakeSeconds > 0 && $total > $awakeSeconds) {
+                return min($total - $awakeSeconds, $intervalSeconds);
+            }
+            return min($total, $intervalSeconds);
+        }
+
         return $intervalSeconds;
+    }
+
+    private function normalizeSecondsDuration(mixed $value, int $intervalSeconds): int
+    {
+        if (!is_numeric($value)) {
+            return 0;
+        }
+
+        $duration = (int) max(0, round((float) $value));
+        if ($intervalSeconds > 0 && $duration > (int) round($intervalSeconds * 1.5)) {
+            return $intervalSeconds;
+        }
+
+        return $duration;
     }
 
     private function weightedOverlapSeconds(int $start, int $end, int $durationSeconds, int $windowStart, int $windowEnd): int

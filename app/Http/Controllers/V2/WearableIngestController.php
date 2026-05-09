@@ -243,6 +243,7 @@ class WearableIngestController extends Controller
         $light = $this->countStageMinutes($activity, ['LIGHT_SLEEP']);
         $rem = $this->countStageMinutes($activity, ['REM_SLEEP']);
         $awake = $this->countStageMinutes($activity, ['AWAKE', 'UNKNOWN']);
+        [$sleepRangeStart, $sleepRangeEnd] = $this->resolveSleepRange($sleepSessions);
 
         $hrVals = [];
         $steps = 0;
@@ -263,17 +264,13 @@ class WearableIngestController extends Controller
             $calories += (float) ($row['calories'] ?? 0);
         }
 
-        $spo2Vals = [];
-        foreach ($spo2Rows as $row) {
-            if (!is_array($row)) continue;
-            $v = (float) ($row['spo2'] ?? $row['value'] ?? 0);
-            if ($v > 0) $spo2Vals[] = $v;
+        $spo2Vals = $this->metricValuesForRange($spo2Rows, ['spo2', 'value'], $sleepRangeStart, $sleepRangeEnd);
+        if ($spo2Vals === []) {
+            $spo2Vals = $this->metricValuesForRange($spo2Rows, ['spo2', 'value']);
         }
-        $stressVals = [];
-        foreach ($stressRows as $row) {
-            if (!is_array($row)) continue;
-            $v = (float) ($row['stress'] ?? $row['value'] ?? 0);
-            if ($v > 0) $stressVals[] = $v;
+        $stressVals = $this->metricValuesForRange($stressRows, ['stress', 'value'], $sleepRangeStart, $sleepRangeEnd);
+        if ($stressVals === []) {
+            $stressVals = $this->metricValuesForRange($stressRows, ['stress', 'value']);
         }
 
         $heartRate = !empty($hrVals) ? (int) round(array_sum($hrVals) / count($hrVals)) : 0;
@@ -329,8 +326,30 @@ class WearableIngestController extends Controller
             if (!is_array($s)) continue;
             $start = (int) ($s['sleep_start'] ?? $s['sleepStart'] ?? 0);
             $end = (int) ($s['sleep_end'] ?? $s['sleepEnd'] ?? 0);
+            $stageDur = 0;
+            foreach ([
+                ['light_sleep_duration', 'lightSleepDuration', 'light_sleep', 'light'],
+                ['deep_sleep_duration', 'deepSleepDuration', 'deep_sleep', 'deep'],
+                ['rem_sleep_duration', 'remSleepDuration', 'rem_sleep', 'rem'],
+            ] as $keys) {
+                foreach ($keys as $key) {
+                    if (!array_key_exists($key, $s)) {
+                        continue;
+                    }
+                    $stageDur += max(0, (int) $s[$key]);
+                    break;
+                }
+            }
+            if ($stageDur > 0) {
+                $seconds += $stageDur;
+                continue;
+            }
             $dur = (int) ($s['total_sleep_duration'] ?? $s['totalSleepDuration'] ?? 0);
             if ($dur > 0) {
+                $awakeDur = (int) ($s['awake_sleep_duration'] ?? $s['awakeSleepDuration'] ?? $s['awake_sleep'] ?? $s['awake'] ?? 0);
+                if ($awakeDur > 0 && $dur > $awakeDur) {
+                    $dur -= $awakeDur;
+                }
                 $seconds += $dur;
                 continue;
             }
@@ -354,6 +373,57 @@ class WearableIngestController extends Controller
             }
         }
         return count($buckets);
+    }
+
+    /**
+     * @return array{0:int,1:int}
+     */
+    private function resolveSleepRange(array $sleepSessions): array
+    {
+        $start = 0;
+        $end = 0;
+        foreach ($sleepSessions as $session) {
+            if (!is_array($session)) {
+                continue;
+            }
+            $sessionStart = $this->normalizeMetricTimestamp($session['sleep_start'] ?? $session['sleepStart'] ?? 0);
+            $sessionEnd = $this->normalizeMetricTimestamp($session['sleep_end'] ?? $session['sleepEnd'] ?? 0);
+            if ($sessionStart <= 0 || $sessionEnd <= $sessionStart) {
+                continue;
+            }
+            $start = $start === 0 ? $sessionStart : min($start, $sessionStart);
+            $end = max($end, $sessionEnd);
+        }
+
+        return [$start, $end];
+    }
+
+    private function metricValuesForRange(array $rows, array $valueKeys, int $rangeStart = 0, int $rangeEnd = 0): array
+    {
+        $values = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            if ($rangeStart > 0 && $rangeEnd > $rangeStart) {
+                $timestamp = $this->normalizeMetricTimestamp($row['timestamp'] ?? $row['ts'] ?? 0);
+                if ($timestamp < $rangeStart || $timestamp > $rangeEnd) {
+                    continue;
+                }
+            }
+            foreach ($valueKeys as $key) {
+                if (!array_key_exists($key, $row)) {
+                    continue;
+                }
+                $value = (float) $row[$key];
+                if ($value > 0) {
+                    $values[] = $value;
+                }
+                break;
+            }
+        }
+
+        return $values;
     }
 
     private function countStageMinutes(array $activity, array $kinds): int
