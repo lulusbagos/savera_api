@@ -1507,17 +1507,15 @@ class ApiController extends Controller
 
     private function resolveTrustedSleepMinutes(int $reportedMinutes, int $stageMinutes, int $metricMinutes): int
     {
-        if ($metricMinutes > 0) {
-            return $metricMinutes;
+        if ($reportedMinutes > 0) {
+            return $reportedMinutes;
         }
 
         if ($stageMinutes > 0) {
             return $stageMinutes;
         }
 
-        // New mobile sends reported sleep as wearable total. If there is no
-        // stage/metric detail yet, keep it as a last-resort legacy fallback.
-        return $reportedMinutes;
+        return $metricMinutes;
     }
 
     /**
