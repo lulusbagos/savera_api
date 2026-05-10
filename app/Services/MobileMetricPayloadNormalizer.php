@@ -166,6 +166,37 @@ class MobileMetricPayloadNormalizer
                     $normalized['total_sleep_duration'] = $sumStage;
                 }
             }
+
+            $lightSeconds = (int) ($normalized['lightSleepDuration'] ?? 0);
+            $deepSeconds = (int) ($normalized['deepSleepDuration'] ?? 0);
+            $remSeconds = (int) ($normalized['remSleepDuration'] ?? 0);
+            $awakeSeconds = (int) ($normalized['awakeSleepDuration'] ?? 0);
+            $totalSeconds = (int) ($normalized['totalSleepDuration'] ?? 0);
+            $sleepStageSeconds = $lightSeconds + $deepSeconds + $remSeconds;
+
+            // Some payloads omit awake duration while session interval still
+            // indicates fragmented sleep. Infer awake so wearable total remains
+            // aligned with interval and mobile UI.
+            if ($intervalSeconds > 0 && $sleepStageSeconds > 0 && $sleepStageSeconds <= $intervalSeconds && $awakeSeconds <= 0) {
+                $inferredAwake = $intervalSeconds - $sleepStageSeconds;
+                if ($inferredAwake > 0) {
+                    $awakeSeconds = $inferredAwake;
+                    $this->setSleepDurationAliases($normalized, ['awakeSleepDuration', 'awake_sleep_duration', 'awake_sleep', 'awake'], $awakeSeconds);
+                }
+            }
+
+            $minimumTotalSeconds = $sleepStageSeconds + max(0, $awakeSeconds);
+            if ($totalSeconds <= 0) {
+                $totalSeconds = $minimumTotalSeconds;
+            } elseif ($minimumTotalSeconds > 0 && $totalSeconds < $minimumTotalSeconds) {
+                $totalSeconds = $minimumTotalSeconds;
+            }
+            if ($intervalSeconds > 0) {
+                $totalSeconds = min($totalSeconds, $intervalSeconds);
+            }
+            if ($totalSeconds > 0) {
+                $this->setSleepDurationAliases($normalized, ['totalSleepDuration', 'total_sleep_duration', 'total_sleep', 'duration', 'duration_seconds'], $totalSeconds);
+            }
         }
 
         if ($bucket === 'data_spo2' && array_key_exists('spo2', $normalized)) {
@@ -313,6 +344,16 @@ class MobileMetricPayloadNormalizer
         }
 
         return $duration;
+    }
+
+    private function setSleepDurationAliases(array &$row, array $aliases, int $seconds): void
+    {
+        foreach ($aliases as $key) {
+            if (array_key_exists($key, $row)) {
+                $row[$key] = $seconds;
+            }
+        }
+        $row[$aliases[0]] = $seconds;
     }
 
     private function ksortRecursive(array $row): array

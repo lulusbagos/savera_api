@@ -1206,7 +1206,8 @@ class ApiController extends Controller
         $req['send_time'] = Carbon::now()->toTimeString();
         $req['sleep_type'] = $request->input('sleep_type', 'night') ?? 'night';
         $this->applyFitToWorkPayload($request, $req);
-        $reportedSleepMinutes = max(0, (int) round((float) ($req['sleep'] ?? 0)));
+        $reportedSleepMinutes = $this->resolveReportedSleepMinutes($request, $req['sleep'] ?? 0);
+        $req['sleep'] = $reportedSleepMinutes;
         $stageSleepMinutes = $this->resolveSleepStageMinutes($req);
         $metricSleep = $this->resolveWindowedSleepFromMetricPayload(
             $request->input('user_sleep', $request->input('data_sleep')),
@@ -1329,7 +1330,8 @@ class ApiController extends Controller
             'app_version' => $request->input('app_version'),
         ];
 
-        $reportedSleepMinutes = max(0, (int) ($req['sleep'] ?? 0));
+        $reportedSleepMinutes = $this->resolveReportedSleepMinutes($request, $req['sleep'] ?? 0);
+        $req['sleep'] = $reportedSleepMinutes;
         $stageSleepMinutes = $this->resolveSleepStageMinutes($req);
         $metricSleep = $this->resolveWindowedSleepFromMetricPayload(
             $request->input('user_sleep', $request->input('data_sleep')),
@@ -1404,6 +1406,24 @@ class ApiController extends Controller
         }
 
         return is_numeric($value) ? (float) $value : null;
+    }
+
+    private function resolveReportedSleepMinutes(Request $request, mixed $fallback): int
+    {
+        foreach ([
+            $request->input('sleep_effective_minutes'),
+            $request->input('sleep_effective'),
+            $request->input('sleep'),
+            $fallback,
+        ] as $candidate) {
+            if (!is_numeric($candidate)) {
+                continue;
+            }
+
+            return max(0, (int) round((float) $candidate));
+        }
+
+        return 0;
     }
 
     private function applyFitToWorkPayload(Request $request, array &$req): void
