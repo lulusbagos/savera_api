@@ -658,6 +658,7 @@
                 <i data-lucide="moon" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Dark
             </button>
             <a href="/docs" class="nav-btn"><i data-lucide="book-open" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>API Docs</a>
+            <a href="/upload-monitoring" class="nav-btn"><i data-lucide="upload-cloud" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Upload Monitor</a>
             <button class="nav-btn" id="refresh-btn"><i data-lucide="refresh-cw" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Refresh</button>
             <button class="nav-btn primary" id="pause-btn"><i data-lucide="pause" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Pause</button>
         </div>
@@ -750,6 +751,35 @@
                 <div class="stat-value" id="uptime-text">&ndash;</div>
                 <div class="stat-label">Uptime</div>
                 <div class="stat-tags"><span class="tag info" id="uptime-since">sejak &ndash;</span></div>
+            </div>
+        </div>
+
+        <!-- SECTION: MOBILE UPLOAD MONITORING -->
+        <div class="section-label"><span class="sl-icon"></span>Mobile Upload Monitoring</div>
+        <div class="grid grid-4">
+            <div class="card card-amber">
+                <div class="stat-icon amber"><i data-lucide="inbox"></i></div>
+                <div class="stat-value glow-amber" id="upload-monitor-pending">0</div>
+                <div class="stat-label">Pending Server</div>
+                <div class="stat-tags"><span class="tag warn">received / queued</span></div>
+            </div>
+            <div class="card card-cyan">
+                <div class="stat-icon cyan"><i data-lucide="loader-2"></i></div>
+                <div class="stat-value glow-cyan" id="upload-monitor-processing">0</div>
+                <div class="stat-label">Sedang Diproses</div>
+                <div class="stat-tags"><span class="tag info" id="upload-monitor-worker">worker -</span></div>
+            </div>
+            <div class="card card-green">
+                <div class="stat-icon green"><i data-lucide="check-check"></i></div>
+                <div class="stat-value glow-green" id="upload-monitor-completed">0</div>
+                <div class="stat-label">Completed</div>
+                <div class="stat-tags"><span class="tag good">JSON tersimpan</span></div>
+            </div>
+            <div class="card card-red">
+                <div class="stat-icon red"><i data-lucide="circle-alert"></i></div>
+                <div class="stat-value glow-red" id="upload-monitor-failed">0</div>
+                <div class="stat-label">Failed</div>
+                <div class="stat-tags"><a class="tag bad" href="/upload-monitoring">lihat detail</a></div>
             </div>
         </div>
 
@@ -978,6 +1008,41 @@
             queueStatus.className = 'infra-detail';
             const qs = operations && operations.queue_status;
             queueStatus.style.color = qs === 'error' ? 'var(--red)' : (qs === 'sync' || qs === 'worker_off') ? 'var(--amber)' : 'var(--green)';
+            renderUploadMonitoring(operations && operations.upload_monitoring);
+        }
+
+        function renderUploadMonitoring(monitoring) {
+            const pendingEl = document.getElementById('upload-monitor-pending');
+            const processingEl = document.getElementById('upload-monitor-processing');
+            const completedEl = document.getElementById('upload-monitor-completed');
+            const failedEl = document.getElementById('upload-monitor-failed');
+            const workerEl = document.getElementById('upload-monitor-worker');
+            if (!pendingEl || !processingEl || !completedEl || !failedEl) return;
+
+            if (!monitoring || monitoring.enabled === false) {
+                pendingEl.textContent = '0';
+                processingEl.textContent = '0';
+                completedEl.textContent = '0';
+                failedEl.textContent = '0';
+                if (workerEl) {
+                    workerEl.textContent = 'monitor belum aktif';
+                    workerEl.className = 'tag warn';
+                }
+                return;
+            }
+
+            pendingEl.textContent = safe(monitoring.pending);
+            processingEl.textContent = safe(monitoring.processing);
+            completedEl.textContent = safe(monitoring.completed);
+            failedEl.textContent = safe(monitoring.failed);
+            if (workerEl) {
+                const workers = Array.isArray(monitoring.workers) ? monitoring.workers : [];
+                const fresh = workers.filter(function(worker) {
+                    return worker && worker.last_seen_at;
+                }).length;
+                workerEl.textContent = fresh + ' heartbeat';
+                workerEl.className = 'tag ' + (fresh > 0 ? 'good' : 'warn');
+            }
         }
 
         function computeHealth(errorRate, summary, operations) {
