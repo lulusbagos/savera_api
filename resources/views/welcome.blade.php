@@ -937,7 +937,7 @@
             if (state.paused && !manual) return;
             const stamp = new Date().toLocaleTimeString('id-ID');
             try {
-                const res = await fetch('/logs/stream');
+                const res = await fetch('/logs/stream', { credentials: 'same-origin' });
                 if (!res.ok) throw new Error('Fetch failed');
                 const data = await res.json();
                 state.data = {
@@ -1302,7 +1302,7 @@
 
         async function loadUsers() {
             try {
-                const res = await fetch('/logs/users');
+                const res = await fetch('/logs/users', { credentials: 'same-origin' });
                 if (!res.ok) return;
                 const data = await res.json();
                 renderUsers(data);

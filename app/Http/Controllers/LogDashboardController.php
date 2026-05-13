@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\MobileUploadBatch;
+use App\Models\MobileUploadChunk;
 use App\Models\WorkerHeartbeat;
 use App\Support\MobileIngestRuntime;
 use Illuminate\Http\JsonResponse;
@@ -105,17 +106,28 @@ class LogDashboardController extends Controller
         $storageDurations = array_slice(array_reverse($storageDurations), 0, 60);
         $cache = Cache::store(MobileIngestRuntime::cacheStore(self::CACHE_STORE));
         $requests = $cache->get('recent_requests', []);
+        $requestFallbacks = $this->buildRequestFallbackFromUploadMonitoring();
+        if (!empty($requestFallbacks)) {
+            $requests = array_slice(array_merge($requests, $requestFallbacks), 0, 100);
+        }
 
         // Fallback & penambahan dari cache file store untuk mengurangi beban database.
         $cachedDurations = $cache->get('storage_durations', []);
         if (!empty($cachedDurations)) {
             $storageDurations = array_slice(array_merge($cachedDurations, $storageDurations), 0, 60);
         }
+        $storageFallbackDurations = $this->buildStorageDurationFallback();
+        if (!empty($storageFallbackDurations)) {
+            $storageDurations = array_slice(array_merge($storageDurations, $storageFallbackDurations), 0, 60);
+        }
 
         $cachedStats = $cache->get('storage_stats', []);
         if (!empty($cachedStats)) {
             $summary['storage_writes'] = max($summary['storage_writes'], $cachedStats['writes'] ?? 0);
             $summary['storage_errors'] = max($summary['storage_errors'], $cachedStats['errors'] ?? 0);
+        }
+        if (!empty($storageDurations)) {
+            $summary['storage_writes'] = max($summary['storage_writes'], count($storageDurations));
         }
 
         $uploadSummary = $this->buildUploadSummary($requests);
@@ -286,6 +298,113 @@ class LogDashboardController extends Controller
         }
 
         return $summary;
+    }
+
+    /**
+     * Fallback untuk grafik Request Duration ketika cache recent_requests kosong,
+     * misalnya setelah cache clear/restart. Data diambil dari tabel monitoring upload.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildRequestFallbackFromUploadMonitoring(): array
+    {
+        if (! Schema::hasTable('mobile_upload_batches')) {
+            return [];
+        }
+
+        return MobileUploadBatch::query()
+            ->orderByDesc('received_at')
+            ->orderByDesc('created_at')
+            ->limit(60)
+            ->get()
+            ->map(function (MobileUploadBatch $batch): array {
+                $extra = is_array($batch->extra_json) ? $batch->extra_json : [];
+                $status = (string) ($batch->status ?: 'received');
+                $receivedAt = $batch->received_at ?: $batch->created_at;
+                $endAt = $batch->queued_at ?: ($batch->received_at ?: $batch->updated_at);
+                $durationMs = $this->durationMs($receivedAt, $endAt, 1.0);
+
+                return [
+                    'time' => optional($receivedAt)->format('Y-m-d H:i:s') ?: now()->format('Y-m-d H:i:s'),
+                    'method' => 'POST',
+                    'uri' => '/api/' . $batch->source,
+                    'route' => $batch->source,
+                    'status' => $this->httpStatusFromUploadStatus($status),
+                    'duration_ms' => $durationMs,
+                    'mac' => $extra['mac_address'] ?? null,
+                    'ip' => null,
+                    'user_id' => $batch->user_id,
+                    'app_version' => $extra['app_version'] ?? null,
+                    'request_bytes' => (int) $batch->payload_bytes_total,
+                    'speed_kbps_est' => $durationMs > 0
+                        ? round((((int) $batch->payload_bytes_total) * 8) / $durationMs, 2)
+                        : null,
+                    'source' => 'upload_monitoring_fallback',
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Fallback untuk grafik Storage Write Speed. Saat worker belum menulis cache
+     * storage_durations, pakai durasi transisi chunk processing->processed.
+     * Jika belum processed, tampilkan durasi queue accept kecil agar chart tetap
+     * memberi sinyal bahwa payload sudah masuk tetapi masih menunggu worker.
+     *
+     * @return array<int, float>
+     */
+    private function buildStorageDurationFallback(): array
+    {
+        if (! Schema::hasTable('mobile_upload_chunks')) {
+            return [];
+        }
+
+        return MobileUploadChunk::query()
+            ->orderByDesc('received_at')
+            ->orderByDesc('created_at')
+            ->limit(60)
+            ->get()
+            ->map(function (MobileUploadChunk $chunk): float {
+                if ($chunk->processing_started_at && $chunk->processed_at) {
+                    return $this->durationMs($chunk->processing_started_at, $chunk->processed_at, 1.0);
+                }
+
+                if ($chunk->received_at && $chunk->queued_at) {
+                    return $this->durationMs($chunk->received_at, $chunk->queued_at, 1.0);
+                }
+
+                return 1.0;
+            })
+            ->values()
+            ->all();
+    }
+
+    private function httpStatusFromUploadStatus(string $status): int
+    {
+        return match ($status) {
+            'failed' => 500,
+            'completed' => 200,
+            'processing', 'queued', 'received' => 202,
+            default => 200,
+        };
+    }
+
+    private function durationMs($start, $end, float $fallback): float
+    {
+        try {
+            if (! $start || ! $end) {
+                return $fallback;
+            }
+
+            $startMs = (float) Carbon::parse($start)->valueOf();
+            $endMs = (float) Carbon::parse($end)->valueOf();
+            $duration = round(max($endMs - $startMs, $fallback), 2);
+
+            return min($duration, 60000.0);
+        } catch (\Throwable) {
+            return $fallback;
+        }
     }
 
     /**
