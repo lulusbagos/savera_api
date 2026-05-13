@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\MobileUploadBatch;
+use App\Models\WorkerHeartbeat;
 use App\Support\MobileIngestRuntime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -9,6 +11,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Schema;
 use Exception;
 
 class HealthService
@@ -58,6 +61,54 @@ class HealthService
             'uses_async_queue' => MobileIngestRuntime::usesAsyncQueue(),
             'worker_enabled' => MobileIngestRuntime::workerEnabled(),
             'recent_uploads' => $this->recentUploadStats(),
+            'upload_monitoring' => $this->uploadMonitoringStats(),
+        ];
+    }
+
+    private function uploadMonitoringStats(): array
+    {
+        if (! Schema::hasTable('mobile_upload_batches')) {
+            return [
+                'enabled' => false,
+                'message' => 'Tabel mobile_upload_batches belum dimigrate',
+            ];
+        }
+
+        $since = now()->subHour();
+        $recent = MobileUploadBatch::query()
+            ->where('received_at', '>=', $since)
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status')
+            ->all();
+
+        $workers = [];
+        if (Schema::hasTable('worker_heartbeats')) {
+            $workers = WorkerHeartbeat::query()
+                ->orderByDesc('last_seen_at')
+                ->limit(10)
+                ->get(['worker_name', 'queue_name', 'status', 'current_upload_id', 'last_seen_at', 'processed_count', 'failed_count'])
+                ->map(fn (WorkerHeartbeat $worker): array => [
+                    'worker_name' => $worker->worker_name,
+                    'queue_name' => $worker->queue_name,
+                    'status' => $worker->status,
+                    'current_upload_id' => $worker->current_upload_id,
+                    'last_seen_at' => optional($worker->last_seen_at)->toDateTimeString(),
+                    'processed_count' => (int) $worker->processed_count,
+                    'failed_count' => (int) $worker->failed_count,
+                ])
+                ->values()
+                ->all();
+        }
+
+        return [
+            'enabled' => true,
+            'last_hour_by_status' => $recent,
+            'pending' => (int) ($recent['received'] ?? 0) + (int) ($recent['queued'] ?? 0),
+            'processing' => (int) ($recent['processing'] ?? 0),
+            'completed' => (int) ($recent['completed'] ?? 0),
+            'failed' => (int) ($recent['failed'] ?? 0),
+            'workers' => $workers,
         ];
     }
 

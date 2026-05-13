@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\MobileUploadBatch;
+use App\Models\WorkerHeartbeat;
 use App\Support\MobileIngestRuntime;
 use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
@@ -329,6 +331,53 @@ class LogDashboardController extends Controller
             'queue_message' => $queueMessage,
             'worker_enabled' => $workerEnabled,
             'uses_async_queue' => $usesAsyncQueue,
+            'upload_monitoring' => $this->buildUploadMonitoringSummary(),
+        ];
+    }
+
+    private function buildUploadMonitoringSummary(): array
+    {
+        if (! Schema::hasTable('mobile_upload_batches')) {
+            return [
+                'enabled' => false,
+                'message' => 'Tabel monitoring upload belum tersedia.',
+            ];
+        }
+
+        $since = Carbon::now()->subHour();
+        $byStatus = MobileUploadBatch::query()
+            ->where('received_at', '>=', $since)
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status')
+            ->all();
+
+        $workers = [];
+        if (Schema::hasTable('worker_heartbeats')) {
+            $workers = WorkerHeartbeat::query()
+                ->orderByDesc('last_seen_at')
+                ->limit(5)
+                ->get(['worker_name', 'status', 'current_upload_id', 'last_seen_at', 'processed_count', 'failed_count'])
+                ->map(fn (WorkerHeartbeat $worker): array => [
+                    'worker_name' => $worker->worker_name,
+                    'status' => $worker->status,
+                    'current_upload_id' => $worker->current_upload_id,
+                    'last_seen_at' => optional($worker->last_seen_at)->toDateTimeString(),
+                    'processed_count' => (int) $worker->processed_count,
+                    'failed_count' => (int) $worker->failed_count,
+                ])
+                ->values()
+                ->all();
+        }
+
+        return [
+            'enabled' => true,
+            'last_hour_by_status' => $byStatus,
+            'pending' => (int) ($byStatus['received'] ?? 0) + (int) ($byStatus['queued'] ?? 0),
+            'processing' => (int) ($byStatus['processing'] ?? 0),
+            'completed' => (int) ($byStatus['completed'] ?? 0),
+            'failed' => (int) ($byStatus['failed'] ?? 0),
+            'workers' => $workers,
         ];
     }
 

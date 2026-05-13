@@ -4,7 +4,11 @@ namespace App\Jobs;
 
 use App\Services\MobileMetricFileWriter;
 use App\Services\MobileMetricPayloadNormalizer;
+use App\Models\MobileUploadBatch;
+use App\Models\MobileUploadChunk;
+use App\Models\WorkerHeartbeat;
 use App\Support\MobileIngestRuntime;
+use Carbon\Carbon;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -13,6 +17,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class StoreUserMetricsJob implements ShouldQueue
@@ -35,7 +40,12 @@ class StoreUserMetricsJob implements ShouldQueue
      * @param array<int, array{path: string, contents: string, bucket?: string}> $files
      * @param string $source
      */
-    public function __construct(protected array $files, protected string $source)
+    public function __construct(
+        protected array $files,
+        protected string $source,
+        protected ?int $batchId = null,
+        protected ?string $uploadId = null
+    )
     {
         $this->onConnection(MobileIngestRuntime::queueConnection());
         $this->onQueue(MobileIngestRuntime::queueName());
@@ -43,6 +53,9 @@ class StoreUserMetricsJob implements ShouldQueue
 
     public function handle(): void
     {
+        $this->markWorkerHeartbeat('processing');
+        $this->markBatchProcessing();
+
         $successfulWrites = 0;
         $failedWrites = 0;
         $durations = [];
@@ -83,10 +96,17 @@ class StoreUserMetricsJob implements ShouldQueue
         $this->recordStorageMetrics($successfulWrites, $failedWrites, $durations);
 
         if ($failedWrites > 0) {
+            $message = 'Metric write failed for ' . $failedWrites . ' file(s): ' . implode(', ', array_slice($failedPaths, 0, 3));
+            $this->markBatchFailed($message);
+            $this->markWorkerHeartbeat('failed', 0, $failedWrites);
+
             throw new \RuntimeException(
-                'Metric write failed for ' . $failedWrites . ' file(s): ' . implode(', ', array_slice($failedPaths, 0, 3))
+                $message
             );
         }
+
+        $this->markBatchCompleted();
+        $this->markWorkerHeartbeat('idle', $successfulWrites, 0);
     }
 
     /**
@@ -160,6 +180,148 @@ class StoreUserMetricsJob implements ShouldQueue
             );
         } catch (LockTimeoutException $e) {
             Log::warning('Storage metrics lock timeout', [
+                'source' => $this->source,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function markBatchProcessing(): void
+    {
+        if (! $this->batchId || ! Schema::hasTable('mobile_upload_batches')) {
+            return;
+        }
+
+        try {
+            $now = Carbon::now('Asia/Makassar');
+            MobileUploadBatch::query()
+                ->whereKey($this->batchId)
+                ->update([
+                    'status' => 'processing',
+                    'processing_started_at' => $now,
+                    'updated_at' => now(),
+                ]);
+
+            if (Schema::hasTable('mobile_upload_chunks')) {
+                MobileUploadChunk::query()
+                    ->where('mobile_upload_batch_id', $this->batchId)
+                    ->whereIn('status', ['received', 'queued'])
+                    ->update([
+                        'status' => 'processing',
+                        'processing_started_at' => $now,
+                        'updated_at' => now(),
+                    ]);
+            }
+        } catch (Throwable $e) {
+            Log::warning('Failed marking mobile upload processing', [
+                'batch_id' => $this->batchId,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function markBatchCompleted(): void
+    {
+        if (! $this->batchId || ! Schema::hasTable('mobile_upload_batches')) {
+            return;
+        }
+
+        try {
+            $now = Carbon::now('Asia/Makassar');
+            MobileUploadBatch::query()
+                ->whereKey($this->batchId)
+                ->update([
+                    'status' => 'completed',
+                    'completed_at' => $now,
+                    'error_code' => null,
+                    'error_message' => null,
+                    'updated_at' => now(),
+                ]);
+
+            if (Schema::hasTable('mobile_upload_chunks')) {
+                MobileUploadChunk::query()
+                    ->where('mobile_upload_batch_id', $this->batchId)
+                    ->where('status', '!=', 'failed')
+                    ->update([
+                        'status' => 'completed',
+                        'processed_at' => $now,
+                        'error_code' => null,
+                        'error_message' => null,
+                        'updated_at' => now(),
+                    ]);
+            }
+        } catch (Throwable $e) {
+            Log::warning('Failed marking mobile upload completed', [
+                'batch_id' => $this->batchId,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function markBatchFailed(string $message): void
+    {
+        if (! $this->batchId || ! Schema::hasTable('mobile_upload_batches')) {
+            return;
+        }
+
+        try {
+            $now = Carbon::now('Asia/Makassar');
+            MobileUploadBatch::query()
+                ->whereKey($this->batchId)
+                ->update([
+                    'status' => 'failed',
+                    'failed_at' => $now,
+                    'error_code' => 'METRIC_WRITE_FAILED',
+                    'error_message' => $message,
+                    'updated_at' => now(),
+                ]);
+
+            if (Schema::hasTable('mobile_upload_chunks')) {
+                MobileUploadChunk::query()
+                    ->where('mobile_upload_batch_id', $this->batchId)
+                    ->where('status', '!=', 'completed')
+                    ->update([
+                        'status' => 'failed',
+                        'failed_at' => $now,
+                        'error_code' => 'METRIC_WRITE_FAILED',
+                        'error_message' => $message,
+                        'updated_at' => now(),
+                    ]);
+            }
+        } catch (Throwable $e) {
+            Log::warning('Failed marking mobile upload failed', [
+                'batch_id' => $this->batchId,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function markWorkerHeartbeat(string $status, int $processedIncrement = 0, int $failedIncrement = 0): void
+    {
+        if (! Schema::hasTable('worker_heartbeats')) {
+            return;
+        }
+
+        try {
+            $workerName = (gethostname() ?: 'worker') . ':' . getmypid();
+            $heartbeat = WorkerHeartbeat::query()->firstOrNew(['worker_name' => $workerName]);
+            $heartbeat->fill([
+                'queue_connection' => MobileIngestRuntime::queueConnection('sync'),
+                'queue_name' => MobileIngestRuntime::queueName('mobile-metrics'),
+                'status' => $status,
+                'current_upload_id' => $status === 'processing' ? $this->uploadId : null,
+                'current_source' => $status === 'processing' ? $this->source : null,
+                'processed_count' => (int) ($heartbeat->processed_count ?? 0) + $processedIncrement,
+                'failed_count' => (int) ($heartbeat->failed_count ?? 0) + $failedIncrement,
+                'last_seen_at' => Carbon::now('Asia/Makassar'),
+                'meta_json' => [
+                    'batch_id' => $this->batchId,
+                    'files' => count($this->files),
+                ],
+            ]);
+            $heartbeat->save();
+        } catch (Throwable $e) {
+            Log::warning('Failed writing worker heartbeat', [
                 'source' => $this->source,
                 'message' => $e->getMessage(),
             ]);

@@ -5,11 +5,14 @@ namespace App\Http\Controllers\V2;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\IngestAudit;
+use App\Models\MobileUploadBatch;
+use App\Models\MobileUploadChunk;
 use App\Models\Summary;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -199,6 +202,17 @@ class WearableIngestController extends Controller
             'status' => 'accepted',
         ]);
 
+        $monitorBatch = $this->recordCompletedUploadMonitor(
+            validated: $validated,
+            company: $company,
+            accepted: $accepted,
+            parsed: $parsed,
+            stored: $stored,
+            summary: $summary,
+            payloadSize: $size,
+            payloadHash: $canonicalHash
+        );
+
         return response()->json([
             'ok' => true,
             'upload_id' => $validated['upload_id'],
@@ -210,6 +224,13 @@ class WearableIngestController extends Controller
             'hash_mode' => 'canonical_without_hash_and_size',
             'summary_id' => $summary?->id,
             'warnings' => $warnings,
+            'upload_monitor' => $monitorBatch ? [
+                'upload_id' => $monitorBatch->upload_id,
+                'source' => $monitorBatch->source,
+                'status' => $monitorBatch->status,
+                'chunks_received' => (int) $monitorBatch->chunks_received,
+                'chunks_total' => (int) $monitorBatch->chunks_total,
+            ] : null,
         ]);
     }
 
@@ -317,6 +338,94 @@ class WearableIngestController extends Controller
             ['company_id' => $companyId, 'user_id' => $userId, 'send_date' => $sendDate, 'sleep_type' => $sleepType],
             $attrs
         );
+    }
+
+    private function recordCompletedUploadMonitor(
+        array $validated,
+        Company $company,
+        array $accepted,
+        array $parsed,
+        array $stored,
+        ?Summary $summary,
+        int $payloadSize,
+        string $payloadHash
+    ): ?MobileUploadBatch {
+        if (! Schema::hasTable('mobile_upload_batches') || ! Schema::hasTable('mobile_upload_chunks')) {
+            return null;
+        }
+
+        try {
+            $now = now('Asia/Makassar');
+            $source = 'ingest.v2.wearable';
+            $uploadId = (string) $validated['upload_id'];
+            $chunkIndex = max(1, (int) $validated['chunk_index']);
+            $chunkCount = max($chunkIndex, (int) $validated['chunk_count']);
+
+            $batch = MobileUploadBatch::query()->firstOrNew([
+                'source' => $source,
+                'upload_id' => $uploadId,
+            ]);
+            $batch->fill([
+                'company_id' => $company->id,
+                'user_id' => (int) $validated['user_id'],
+                'employee_id' => $summary?->employee_id,
+                'device_id' => (int) $validated['device_id'],
+                'upload_date' => (string) $validated['date'],
+                'status' => 'completed',
+                'chunks_total' => max((int) ($batch->chunks_total ?: 1), $chunkCount),
+                'payload_hash' => $payloadHash,
+                'idempotency_key' => (string) $validated['idempotency_key'],
+                'summary_id' => $summary?->id,
+                'accepted_counts_json' => $accepted,
+                'parsed_counts_json' => $parsed,
+                'stored_counts_json' => $stored,
+                'extra_json' => [
+                    'app_version' => $validated['app_version'] ?? null,
+                    'range' => $validated['range'] ?? null,
+                ],
+                'received_at' => $batch->received_at ?: $now,
+                'queued_at' => $batch->queued_at,
+                'processing_started_at' => $batch->processing_started_at ?: $now,
+                'completed_at' => $now,
+                'last_chunk_at' => $now,
+                'error_code' => null,
+                'error_message' => null,
+            ]);
+            $batch->save();
+
+            MobileUploadChunk::query()->updateOrCreate(
+                [
+                    'source' => $source,
+                    'upload_id' => $uploadId,
+                    'chunk_index' => $chunkIndex,
+                ],
+                [
+                    'mobile_upload_batch_id' => $batch->id,
+                    'chunk_count' => $chunkCount,
+                    'status' => 'completed',
+                    'payload_hash' => $payloadHash,
+                    'payload_size' => $payloadSize,
+                    'storage_path' => 'v2/ingest/wearable',
+                    'received_at' => $now,
+                    'processing_started_at' => $now,
+                    'processed_at' => $now,
+                    'error_code' => null,
+                    'error_message' => null,
+                ]
+            );
+
+            $chunkStats = MobileUploadChunk::query()
+                ->where('mobile_upload_batch_id', $batch->id)
+                ->selectRaw('COUNT(*) as chunks_received, COALESCE(SUM(payload_size), 0) as payload_bytes_total')
+                ->first();
+            $batch->chunks_received = (int) ($chunkStats?->chunks_received ?? 0);
+            $batch->payload_bytes_total = (int) ($chunkStats?->payload_bytes_total ?? 0);
+            $batch->save();
+
+            return $batch->refresh();
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function calcSleepMinutes(array $sleepSessions, array $activity): int

@@ -11,6 +11,8 @@ use App\Models\Device;
 use App\Models\Employee;
 use App\Models\Leave;
 use App\Models\Mess;
+use App\Models\MobileUploadBatch;
+use App\Models\MobileUploadChunk;
 use App\Models\Shift;
 use App\Models\Summary;
 use App\Models\Ticket;
@@ -1119,6 +1121,200 @@ class ApiController extends Controller
         Cache::store($this->cacheStore())->forget("mobile:summary-week:{$companyId}:{$userId}:{$dateFrom}:{$dateTo}");
     }
 
+    private function recordMobileUploadReceived(
+        Request $request,
+        Company $company,
+        Device $device,
+        Employee $employee,
+        string $source,
+        array $payloadData,
+        string $storagePath
+    ): ?MobileUploadBatch {
+        if (! Schema::hasTable('mobile_upload_batches') || ! Schema::hasTable('mobile_upload_chunks')) {
+            return null;
+        }
+
+        try {
+            $now = Carbon::now('Asia/Makassar');
+            $raw = (string) $request->getContent();
+            $payloadSize = strlen($raw);
+            $payloadHash = (string) $request->input('payload_hash_sha256', '');
+            if ($payloadHash === '' && $payloadSize > 0) {
+                $payloadHash = hash('sha256', $raw);
+            }
+
+            $chunkIndex = max(1, (int) $request->input('chunk_index', 1));
+            $chunkCount = max($chunkIndex, (int) $request->input('chunk_count', 1));
+            $uploadDate = $this->resolveMobileUploadDate($payloadData);
+            $uploadId = $this->resolveMobileUploadId($request, $company, $device, $employee, $source, $payloadData, $uploadDate);
+            $idempotencyKey = (string) $request->input('idempotency_key', $request->header('Idempotency-Key', ''));
+
+            $batch = MobileUploadBatch::query()->firstOrNew([
+                'source' => $source,
+                'upload_id' => $uploadId,
+            ]);
+            $batch->fill([
+                'company_id' => $company->id,
+                'user_id' => $employee->user_id,
+                'employee_id' => $employee->id,
+                'device_id' => $device->id,
+                'upload_date' => $uploadDate,
+                'status' => 'received',
+                'chunks_total' => max((int) ($batch->chunks_total ?: 1), $chunkCount),
+                'payload_hash' => $payloadHash !== '' ? $payloadHash : $batch->payload_hash,
+                'idempotency_key' => $idempotencyKey !== '' ? $idempotencyKey : $batch->idempotency_key,
+                'summary_id' => $payloadData['summary_id'] ?? $batch->summary_id,
+                'extra_json' => [
+                    'app_version' => $request->input('app_version'),
+                    'mac_address' => $request->input('mac_address'),
+                    'sleep_type' => $payloadData['sleep_type'] ?? null,
+                    'device_time' => $payloadData['device_time'] ?? null,
+                    'dispatch_mode' => MobileIngestRuntime::dispatchMode(),
+                ],
+                'received_at' => $batch->received_at ?: $now,
+                'last_chunk_at' => $now,
+                'error_code' => null,
+                'error_message' => null,
+            ]);
+            $batch->save();
+
+            MobileUploadChunk::query()->updateOrCreate(
+                [
+                    'source' => $source,
+                    'upload_id' => $uploadId,
+                    'chunk_index' => $chunkIndex,
+                ],
+                [
+                    'mobile_upload_batch_id' => $batch->id,
+                    'chunk_count' => $chunkCount,
+                    'status' => 'received',
+                    'payload_hash' => $payloadHash !== '' ? $payloadHash : null,
+                    'payload_size' => $payloadSize,
+                    'storage_path' => $storagePath,
+                    'received_at' => $now,
+                    'error_code' => null,
+                    'error_message' => null,
+                ]
+            );
+
+            $chunkStats = MobileUploadChunk::query()
+                ->where('mobile_upload_batch_id', $batch->id)
+                ->selectRaw('COUNT(*) as chunks_received, COALESCE(SUM(payload_size), 0) as payload_bytes_total')
+                ->first();
+
+            $batch->chunks_received = (int) ($chunkStats?->chunks_received ?? 0);
+            $batch->payload_bytes_total = (int) ($chunkStats?->payload_bytes_total ?? 0);
+            $batch->save();
+
+            return $batch->refresh();
+        } catch (Throwable $e) {
+            LogHelper::logError('Mobile upload monitoring failed:', json_encode([
+                'source' => $source,
+                'company_id' => $company->id,
+                'employee_id' => $employee->id,
+                'message' => $e->getMessage(),
+            ], JSON_UNESCAPED_SLASHES));
+
+            return null;
+        }
+    }
+
+    private function markMobileUploadQueued(?MobileUploadBatch $batch): void
+    {
+        if (! $batch || ! Schema::hasTable('mobile_upload_batches')) {
+            return;
+        }
+
+        try {
+            $now = Carbon::now('Asia/Makassar');
+            $batch->forceFill([
+                'status' => 'queued',
+                'queued_at' => $batch->queued_at ?: $now,
+            ])->save();
+
+            if (Schema::hasTable('mobile_upload_chunks')) {
+                MobileUploadChunk::query()
+                    ->where('mobile_upload_batch_id', $batch->id)
+                    ->whereIn('status', ['received'])
+                    ->update([
+                        'status' => 'queued',
+                        'queued_at' => $now,
+                        'updated_at' => now(),
+                    ]);
+            }
+        } catch (Throwable $e) {
+            LogHelper::logError('Mobile upload queue mark failed:', $e->getMessage());
+        }
+    }
+
+    private function mobileUploadResponsePayload(?MobileUploadBatch $batch): ?array
+    {
+        if (! $batch) {
+            return null;
+        }
+
+        return [
+            'upload_id' => $batch->upload_id,
+            'source' => $batch->source,
+            'status' => $batch->status,
+            'chunks_received' => (int) $batch->chunks_received,
+            'chunks_total' => (int) $batch->chunks_total,
+        ];
+    }
+
+    private function resolveMobileUploadId(
+        Request $request,
+        Company $company,
+        Device $device,
+        Employee $employee,
+        string $source,
+        array $payloadData,
+        string $uploadDate
+    ): string {
+        foreach ([
+            $request->input('upload_id'),
+            $request->input('sync_id'),
+            $request->input('idempotency_key'),
+            $request->header('X-Upload-Id'),
+        ] as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($candidate !== '') {
+                return substr($candidate, 0, 120);
+            }
+        }
+
+        $fingerprint = implode('|', [
+            $company->id,
+            $source,
+            $employee->id,
+            $device->id,
+            $uploadDate,
+            $payloadData['sleep_type'] ?? '',
+            $payloadData['device_time'] ?? '',
+            $request->input('app_version', ''),
+        ]);
+
+        return 'legacy-' . substr(sha1($fingerprint), 0, 40);
+    }
+
+    private function resolveMobileUploadDate(array $payloadData): string
+    {
+        $sendDate = (string) ($payloadData['send_date'] ?? '');
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $sendDate) === 1) {
+            return $sendDate;
+        }
+
+        $deviceTime = (string) ($payloadData['device_time'] ?? '');
+        if ($deviceTime !== '') {
+            try {
+                return Carbon::parse($deviceTime, 'Asia/Makassar')->toDateString();
+            } catch (Throwable) {
+            }
+        }
+
+        return Carbon::now('Asia/Makassar')->toDateString();
+    }
+
     private function resolveNetworkSyncStatus(Request $request, Employee $employee): array
     {
         $cache = Cache::store($this->cacheStore());
@@ -1178,10 +1374,10 @@ class ApiController extends Controller
     /**
      * @param  array<int, array{path: string, contents: string}>  $filesToWrite
      */
-    private function dispatchMetricWriteJob(array $filesToWrite, string $source): void
+    private function dispatchMetricWriteJob(array $filesToWrite, string $source, ?MobileUploadBatch $batch = null): void
     {
         $mode = MobileIngestRuntime::dispatchMode();
-        $job = new StoreUserMetricsJob($filesToWrite, $source);
+        $job = new StoreUserMetricsJob($filesToWrite, $source, $batch?->id, $batch?->upload_id);
 
         try {
             if (app()->runningUnitTests()) {
@@ -1195,10 +1391,12 @@ class ApiController extends Controller
             }
 
             if ($mode === 'queue' || ($mode === 'auto' && MobileIngestRuntime::usesAsyncQueue())) {
+                $this->markMobileUploadQueued($batch);
                 dispatch($job);
                 return;
             }
 
+            $this->markMobileUploadQueued($batch);
             dispatch($job)->afterResponse();
         } catch (Throwable $e) {
             LogHelper::logError('Dispatch metric write job fallback:', json_encode([
@@ -1211,6 +1409,7 @@ class ApiController extends Controller
             // Fail-open: summary sudah tersimpan, raw metric boleh diproses setelah response
             // agar user tidak menunggu saat queue/worker sedang padat.
             try {
+                $this->markMobileUploadQueued($batch);
                 dispatch($job)->afterResponse();
             } catch (Throwable $fallbackError) {
                 LogHelper::logError('Dispatch metric after-response fallback failed:', json_encode([
@@ -1308,10 +1507,21 @@ class ApiController extends Controller
                         ], 500);
                     }
 
+                    $batch = $this->recordMobileUploadReceived(
+                        request: $request,
+                        company: $company,
+                        device: $device,
+                        employee: $employee,
+                        source: $source,
+                        payloadData: $payload['data'],
+                        storagePath: $payload['file']
+                    );
+
                     return [
                         'data' => $payload['data'],
                         'file' => $payload['file'],
                         'source' => $source,
+                        'batch' => $batch,
                     ];
                 });
 
@@ -1320,11 +1530,12 @@ class ApiController extends Controller
                 }
 
                 $filesToWrite = $this->buildMetricWriteQueue($request, $metricMap, $result['file']);
-                $this->dispatchMetricWriteJob($filesToWrite, $result['source']);
+                $this->dispatchMetricWriteJob($filesToWrite, $result['source'], $result['batch'] ?? null);
 
                 return response([
                     'message' => 'Successfully created',
                     'data' => $result['data'],
+                    'upload_monitor' => $this->mobileUploadResponsePayload($result['batch'] ?? null),
                 ]);
             } finally {
                 $lock->release();
