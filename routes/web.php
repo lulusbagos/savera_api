@@ -6,11 +6,15 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Http;
 use App\Http\Controllers\GoogleController;
 use App\Http\Controllers\LogDashboardController;
+use App\Http\Controllers\MobileUploadMonitoringController;
 
 // =========================
 // 🔹 Default Views
 // =========================
-Route::get('/', fn() => view('welcome'));
+Route::get('/', [MobileUploadMonitoringController::class, 'index'])->name('mobile-upload-monitoring.index');
+Route::get('/upload-monitoring', [MobileUploadMonitoringController::class, 'index'])->name('mobile-upload-monitoring.alias');
+Route::get('/upload-monitoring/stream', [MobileUploadMonitoringController::class, 'stream'])->name('mobile-upload-monitoring.stream');
+Route::get('/ops', fn() => view('welcome'))->name('ops-dashboard');
 Route::get('/docs', fn() => view('docs'));
 Route::get('/sleep', fn() => view('sleep'));
 
