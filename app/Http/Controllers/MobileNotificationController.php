@@ -312,7 +312,9 @@ CSS;
                 if ($userCompanyId) {
                     $company = $companies->firstWhere('id', (int) $userCompanyId);
                 }
-                if (! $company) {
+                // Kalau header company dari HP tidak cocok dengan company user,
+                // jangan paksa pakai company itu karena akan berakhir Employee not found.
+                if (! $company && ! $userCompanyId) {
                     $company = $companies->first();
                 }
             }
