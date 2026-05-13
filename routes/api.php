@@ -40,6 +40,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('summary', [ApiController::class, 'summary'])->name('summary');
     Route::post('detail', [ApiController::class, 'detail'])->name('detail');
     Route::post('mobile/sleep-snapshot', [ApiController::class, 'sleepSnapshot'])->name('mobile.sleep-snapshot');
+    Route::get('mobile/summary-week', [ApiController::class, 'summaryWeek'])->name('mobile.summary-week');
     Route::post('debug/detail-payload', [ApiController::class, 'debugDetailPayload'])->name('debug.detail-payload');
     Route::post('fit-to-work', [MobileFitToWorkController::class, 'store'])->name('mobile.fit-to-work.store.legacy');
     Route::post('mobile/fit-to-work', [MobileFitToWorkController::class, 'store'])->name('mobile.fit-to-work.store');

@@ -223,6 +223,10 @@ class LogDashboardController extends Controller
             'upload_summary_failed' => 0,
             'upload_detail_ok' => 0,
             'upload_detail_failed' => 0,
+            'upload_sleep_snapshot_ok' => 0,
+            'upload_sleep_snapshot_failed' => 0,
+            'upload_ingest_v2_ok' => 0,
+            'upload_ingest_v2_failed' => 0,
             'upload_fail_rate' => 0.0,
             'upload_avg_ms' => 0.0,
             'upload_last_time' => null,
@@ -238,10 +242,14 @@ class LogDashboardController extends Controller
                     $route = 'summary';
                 } elseif (Str::contains($uri, '/api/detail')) {
                     $route = 'detail';
+                } elseif (Str::contains($uri, '/api/mobile/sleep-snapshot')) {
+                    $route = 'mobile.sleep-snapshot';
+                } elseif (Str::contains($uri, '/api/v2/ingest/wearable')) {
+                    $route = 'ingest.v2.wearable';
                 }
             }
 
-            if (!in_array($route, ['summary', 'detail'], true)) {
+            if (!in_array($route, ['summary', 'detail', 'mobile.sleep-snapshot', 'ingest.v2.wearable'], true)) {
                 continue;
             }
 
@@ -252,8 +260,12 @@ class LogDashboardController extends Controller
 
             if ($route === 'summary') {
                 $summary[$isSuccess ? 'upload_summary_ok' : 'upload_summary_failed']++;
-            } else {
+            } elseif ($route === 'detail') {
                 $summary[$isSuccess ? 'upload_detail_ok' : 'upload_detail_failed']++;
+            } elseif ($route === 'mobile.sleep-snapshot') {
+                $summary[$isSuccess ? 'upload_sleep_snapshot_ok' : 'upload_sleep_snapshot_failed']++;
+            } else {
+                $summary[$isSuccess ? 'upload_ingest_v2_ok' : 'upload_ingest_v2_failed']++;
             }
 
             if ($summary['upload_last_time'] === null) {
@@ -262,7 +274,10 @@ class LogDashboardController extends Controller
             }
         }
 
-        $failed = $summary['upload_summary_failed'] + $summary['upload_detail_failed'];
+        $failed = $summary['upload_summary_failed']
+            + $summary['upload_detail_failed']
+            + $summary['upload_sleep_snapshot_failed']
+            + $summary['upload_ingest_v2_failed'];
         if ($summary['upload_recent_total'] > 0) {
             $summary['upload_fail_rate'] = round(($failed / $summary['upload_recent_total']) * 100, 1);
             $summary['upload_avg_ms'] = round(array_sum($durations) / count($durations), 2);

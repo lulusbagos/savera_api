@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Support\MobileIngestRuntime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
@@ -56,6 +57,63 @@ class HealthService
             'queue_name' => MobileIngestRuntime::queueName('mobile-metrics'),
             'uses_async_queue' => MobileIngestRuntime::usesAsyncQueue(),
             'worker_enabled' => MobileIngestRuntime::workerEnabled(),
+            'recent_uploads' => $this->recentUploadStats(),
+        ];
+    }
+
+    private function recentUploadStats(): array
+    {
+        $routes = ['summary', 'detail', 'mobile.sleep-snapshot', 'ingest.v2.wearable'];
+        $requests = Cache::store(MobileIngestRuntime::cacheStore('file'))->get('recent_requests', []);
+        if (! is_array($requests)) {
+            return [
+                'total' => 0,
+                'failed' => 0,
+                'avg_ms' => 0.0,
+                'max_payload_bytes' => 0,
+                'last_time' => null,
+                'last_route' => null,
+                'routes' => [],
+            ];
+        }
+
+        $total = 0;
+        $failed = 0;
+        $durations = [];
+        $maxPayloadBytes = 0;
+        $lastTime = null;
+        $lastRoute = null;
+        $byRoute = [];
+
+        foreach ($requests as $request) {
+            $route = (string) ($request['route'] ?? '');
+            if (! in_array($route, $routes, true)) {
+                continue;
+            }
+
+            $total++;
+            $status = (int) ($request['status'] ?? 0);
+            if ($status <= 0 || $status >= 400) {
+                $failed++;
+            }
+            $durations[] = (float) ($request['duration_ms'] ?? 0.0);
+            $maxPayloadBytes = max($maxPayloadBytes, (int) ($request['request_bytes'] ?? 0));
+            $byRoute[$route] = ($byRoute[$route] ?? 0) + 1;
+            if ($lastTime === null) {
+                $lastTime = $request['time'] ?? null;
+                $lastRoute = $route;
+            }
+        }
+
+        return [
+            'total' => $total,
+            'failed' => $failed,
+            'fail_rate' => $total > 0 ? round(($failed / $total) * 100, 1) : 0.0,
+            'avg_ms' => $durations === [] ? 0.0 : round(array_sum($durations) / count($durations), 2),
+            'max_payload_bytes' => $maxPayloadBytes,
+            'last_time' => $lastTime,
+            'last_route' => $lastRoute,
+            'routes' => $byRoute,
         ];
     }
 

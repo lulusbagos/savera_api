@@ -13,7 +13,6 @@ use App\Models\Leave;
 use App\Models\Mess;
 use App\Models\Shift;
 use App\Models\Summary;
-use App\Services\MobileMetricPayloadNormalizer;
 use App\Models\Ticket;
 use App\Support\MobileIngestRuntime;
 use Carbon\Carbon;
@@ -336,6 +335,133 @@ class ApiController extends Controller
             ],
             payloadBuilder: fn (Request $request, Company $company, Device $device, Employee $employee): array => $this->buildSleepSnapshotIngestPayload($request, $company, $device, $employee)
         );
+    }
+
+    public function summaryWeek(Request $request)
+    {
+        $company = $this->findCompanyByCode($request->header('company'), $request->user()?->id);
+        if (! $company) {
+            return response([
+                'message' => 'Company not found.',
+            ], 404);
+        }
+
+        $employee = Employee::query()
+            ->select(['id', 'code', 'fullname', 'department_id', 'mess_id', 'device_id', 'company_id', 'user_id', 'job', 'status'])
+            ->where('company_id', $company->id)
+            ->where('user_id', $request->user()->id)
+            ->whereNull('deleted_at')
+            ->first();
+        if (! $employee) {
+            return response([
+                'message' => 'Employee not found.',
+            ], 404);
+        }
+
+        $dateTo = Carbon::now('Asia/Makassar')->toDateString();
+        $dateFrom = Carbon::parse($dateTo, 'Asia/Makassar')->subDays(6)->toDateString();
+        $cacheKey = "mobile:summary-week:{$company->id}:{$employee->user_id}:{$dateFrom}:{$dateTo}";
+
+        if ((string) $request->query('refresh') === '1') {
+            Cache::store($this->cacheStore())->forget($cacheKey);
+        }
+
+        $payload = Cache::store($this->cacheStore())->remember($cacheKey, 60, function () use ($company, $employee, $dateFrom, $dateTo) {
+            $summaries = Summary::query()
+                ->select([
+                    'id',
+                    'active',
+                    'active_text',
+                    'steps',
+                    'steps_text',
+                    'heart_rate',
+                    'heart_rate_text',
+                    'distance',
+                    'distance_text',
+                    'calories',
+                    'calories_text',
+                    'spo2',
+                    'spo2_text',
+                    'stress',
+                    'stress_text',
+                    'sleep',
+                    'sleep_text',
+                    'sleep_start',
+                    'sleep_end',
+                    'sleep_type',
+                    'deep_sleep',
+                    'light_sleep',
+                    'rem_sleep',
+                    'awake',
+                    'wakeup',
+                    'send_date',
+                    'send_time',
+                    'device_time',
+                    'app_version',
+                    'fit_to_work_q1',
+                    'fit_to_work_q2',
+                    'fit_to_work_q3',
+                    'fit_to_work_submitted_at',
+                    'updated_at',
+                ])
+                ->where('company_id', $company->id)
+                ->where('user_id', $employee->user_id)
+                ->whereBetween('send_date', [$dateFrom, $dateTo])
+                ->whereNull('deleted_at')
+                ->orderBy('send_date')
+                ->orderBy('sleep_type')
+                ->orderBy('id')
+                ->get();
+
+            $items = $summaries->map(fn (Summary $summary): array => $this->formatMobileSummaryWeekItem($summary))->values()->all();
+            $daily = collect($items)
+                ->groupBy('send_date')
+                ->map(fn ($rows, string $date): array => $this->formatMobileSummaryWeekDaily($date, $rows->values()->all()))
+                ->values()
+                ->all();
+
+            $sleepValues = collect($items)
+                ->pluck('sleep_minutes')
+                ->filter(fn ($value) => (int) $value > 0)
+                ->map(fn ($value) => (int) $value)
+                ->values();
+            $lastUpdated = collect($items)->pluck('updated_at')->filter()->max();
+
+            return [
+                'message' => 'ok',
+                'range' => [
+                    'date_from' => $dateFrom,
+                    'date_to' => $dateTo,
+                    'days' => 7,
+                    'timezone' => 'Asia/Makassar',
+                ],
+                'employee' => [
+                    'id' => $employee->id,
+                    'user_id' => $employee->user_id,
+                    'code' => $employee->code,
+                    'fullname' => $employee->fullname,
+                    'job' => $employee->job,
+                    'status' => $employee->status,
+                ],
+                'summary' => [
+                    'records' => count($items),
+                    'daily_records' => count($daily),
+                    'avg_sleep_minutes' => $sleepValues->isEmpty() ? 0 : (int) round($sleepValues->avg()),
+                    'avg_sleep_text' => $sleepValues->isEmpty() ? '-' : $this->minutesToTicketSleepText((int) round($sleepValues->avg())),
+                    'max_sleep_minutes' => $sleepValues->isEmpty() ? 0 : (int) $sleepValues->max(),
+                    'max_sleep_text' => $sleepValues->isEmpty() ? '-' : $this->minutesToTicketSleepText((int) $sleepValues->max()),
+                    'min_sleep_minutes' => $sleepValues->isEmpty() ? 0 : (int) $sleepValues->min(),
+                    'min_sleep_text' => $sleepValues->isEmpty() ? '-' : $this->minutesToTicketSleepText((int) $sleepValues->min()),
+                ],
+                'items' => $items,
+                'daily' => $daily,
+                'last_updated_at' => $lastUpdated,
+                'generated_at' => Carbon::now('Asia/Makassar')->toIso8601String(),
+                'cache_ttl_seconds' => 60,
+            ];
+        });
+
+        return response($payload);
     }
 
     public function ticket(Request $request, $id = null)
@@ -925,18 +1051,20 @@ class ApiController extends Controller
     private function buildMetricWriteQueue(Request $request, array $metricMap, string $file): array
     {
         $filesToWrite = [];
-        /** @var MobileMetricPayloadNormalizer $normalizer */
-        $normalizer = app(MobileMetricPayloadNormalizer::class);
-
         foreach ($metricMap as $pathPrefix => $requestKey) {
             $payload = $request->input($requestKey, null);
             if ($payload === null) {
                 $payload = $request->input($pathPrefix, '[]');
             }
 
+            $contents = is_string($payload)
+                ? $payload
+                : json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
             $filesToWrite[] = [
                 'path' => $pathPrefix.$file,
-                'contents' => $normalizer->normalizeForBucket($pathPrefix, $payload),
+                'bucket' => $pathPrefix,
+                'contents' => is_string($contents) ? $contents : '[]',
             ];
         }
 
@@ -978,6 +1106,17 @@ class ApiController extends Controller
     private function cacheStore(): string
     {
         return MobileIngestRuntime::cacheStore('file');
+    }
+
+    private function forgetMobileSummaryWeekCache(int $companyId, int $userId): void
+    {
+        if ($companyId <= 0 || $userId <= 0) {
+            return;
+        }
+
+        $dateTo = Carbon::now('Asia/Makassar')->toDateString();
+        $dateFrom = Carbon::parse($dateTo, 'Asia/Makassar')->subDays(6)->toDateString();
+        Cache::store($this->cacheStore())->forget("mobile:summary-week:{$companyId}:{$userId}:{$dateFrom}:{$dateTo}");
     }
 
     private function resolveNetworkSyncStatus(Request $request, Employee $employee): array
@@ -1069,8 +1208,16 @@ class ApiController extends Controller
                 'error' => $e->getMessage(),
             ], JSON_UNESCAPED_SLASHES));
 
-            // Fail-open fallback agar upload tidak 500 saat queue sedang terganggu.
-            dispatch_sync($job);
+            // Fail-open: summary sudah tersimpan, raw metric boleh diproses setelah response
+            // agar user tidak menunggu saat queue/worker sedang padat.
+            try {
+                dispatch($job)->afterResponse();
+            } catch (Throwable $fallbackError) {
+                LogHelper::logError('Dispatch metric after-response fallback failed:', json_encode([
+                    'source' => $source,
+                    'error' => $fallbackError->getMessage(),
+                ], JSON_UNESCAPED_SLASHES));
+            }
         }
     }
 
@@ -1209,11 +1356,16 @@ class ApiController extends Controller
         $reportedSleepMinutes = $this->resolveReportedSleepMinutes($request, $req['sleep'] ?? 0);
         $req['sleep'] = $reportedSleepMinutes;
         $stageSleepMinutes = $this->resolveSleepStageMinutes($req);
-        $metricSleep = $this->resolveWindowedSleepFromMetricPayload(
-            $request->input('user_sleep', $request->input('data_sleep')),
-            (string) ($req['sleep_type'] ?? 'night'),
-            (string) ($req['device_time'] ?? '')
-        );
+        $metricSleep = ['minutes' => 0, 'main_start' => 0, 'main_end' => 0];
+        // Fast path: mobile already sends effective sleep and stage totals.
+        // Decode the large user_sleep JSON only as a fallback, so /summary stays quick under traffic.
+        if ($reportedSleepMinutes <= 0 && $stageSleepMinutes <= 0) {
+            $metricSleep = $this->resolveWindowedSleepFromMetricPayload(
+                $request->input('user_sleep', $request->input('data_sleep')),
+                (string) ($req['sleep_type'] ?? 'night'),
+                (string) ($req['device_time'] ?? '')
+            );
+        }
         $req['sleep'] = $this->resolveTrustedSleepMinutes(
             $reportedSleepMinutes,
             $stageSleepMinutes,
@@ -1249,6 +1401,7 @@ class ApiController extends Controller
             $req
         );
         $req['summary_id'] = $summary->id;
+        $this->forgetMobileSummaryWeekCache($company->id, (int) $req['user_id']);
 
         $deviceDate = Str::substr((string) ($req['device_time'] ?? ''), 0, 10);
         $fileDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $deviceDate) === 1
@@ -1333,11 +1486,14 @@ class ApiController extends Controller
         $reportedSleepMinutes = $this->resolveReportedSleepMinutes($request, $req['sleep'] ?? 0);
         $req['sleep'] = $reportedSleepMinutes;
         $stageSleepMinutes = $this->resolveSleepStageMinutes($req);
-        $metricSleep = $this->resolveWindowedSleepFromMetricPayload(
-            $request->input('user_sleep', $request->input('data_sleep')),
-            $sleepType,
-            $deviceTime
-        );
+        $metricSleep = ['minutes' => 0, 'main_start' => 0, 'main_end' => 0];
+        if ($reportedSleepMinutes <= 0 && $stageSleepMinutes <= 0) {
+            $metricSleep = $this->resolveWindowedSleepFromMetricPayload(
+                $request->input('user_sleep', $request->input('data_sleep')),
+                $sleepType,
+                $deviceTime
+            );
+        }
         $req['sleep'] = $this->resolveTrustedSleepMinutes(
             $reportedSleepMinutes,
             $stageSleepMinutes,
@@ -1381,6 +1537,7 @@ class ApiController extends Controller
         }
 
         $req['summary_id'] = $summary?->id;
+        $this->forgetMobileSummaryWeekCache($company->id, (int) $employee->user_id);
 
         $file = Carbon::parse($sendDate)->format('/Y/m/d/').Str::padLeft($employee->user_id, 20, '0').'.json';
 
@@ -1809,6 +1966,123 @@ class ApiController extends Controller
         $mins = $minutes % 60;
 
         return sprintf('%d jam %02d menit', $hours, $mins);
+    }
+
+    private function formatMobileSummaryWeekItem(Summary $summary): array
+    {
+        $sleepMinutes = max(0, (int) ($summary->sleep ?? 0));
+        $deepMinutes = max(0, (int) ($summary->deep_sleep ?? 0));
+        $lightMinutes = max(0, (int) ($summary->light_sleep ?? 0));
+        $remMinutes = max(0, (int) ($summary->rem_sleep ?? 0));
+        $awakeMinutes = max(0, (int) ($summary->awake ?? 0));
+        $stageTotalMinutes = $deepMinutes + $lightMinutes + $remMinutes + $awakeMinutes;
+        $ftwQ1 = $this->nullableInteger($summary->fit_to_work_q1);
+        $ftwQ2 = $this->nullableInteger($summary->fit_to_work_q2);
+        $ftwQ3 = $this->nullableInteger($summary->fit_to_work_q3);
+
+        return [
+            'id' => $summary->id,
+            'send_date' => $summary->send_date ? (string) $summary->send_date : null,
+            'send_time' => $summary->send_time ? (string) $summary->send_time : null,
+            'device_time' => $summary->device_time ? (string) $summary->device_time : null,
+            'sleep_type' => $summary->sleep_type ?: 'night',
+            'sleep_minutes' => $sleepMinutes,
+            'sleep_text' => $this->minutesToTicketSleepText($sleepMinutes),
+            'sleep_clock_text' => $this->minutesToSleepText($sleepMinutes),
+            'sleep_category' => $this->mobileSleepCategoryFromMinutes($sleepMinutes),
+            'sleep_start' => $this->normalizeMetricTs($summary->sleep_start),
+            'sleep_end' => $this->normalizeMetricTs($summary->sleep_end),
+            'sleep_start_text' => $this->formatMobileMetricTimestamp($summary->sleep_start),
+            'sleep_end_text' => $this->formatMobileMetricTimestamp($summary->sleep_end),
+            'stage' => [
+                'deep_minutes' => $deepMinutes,
+                'light_minutes' => $lightMinutes,
+                'rem_minutes' => $remMinutes,
+                'awake_minutes' => $awakeMinutes,
+                'total_minutes' => $stageTotalMinutes,
+                'deep_text' => $this->minutesToTicketSleepText($deepMinutes),
+                'light_text' => $this->minutesToTicketSleepText($lightMinutes),
+                'rem_text' => $this->minutesToTicketSleepText($remMinutes),
+                'awake_text' => $this->minutesToTicketSleepText($awakeMinutes),
+            ],
+            'activity' => [
+                'active' => $summary->active,
+                'active_text' => $summary->active_text,
+                'steps' => $summary->steps,
+                'steps_text' => $summary->steps_text,
+                'distance' => $summary->distance,
+                'distance_text' => $summary->distance_text,
+                'calories' => $summary->calories,
+                'calories_text' => $summary->calories_text,
+            ],
+            'vitals' => [
+                'heart_rate' => $summary->heart_rate,
+                'heart_rate_text' => $summary->heart_rate_text,
+                'spo2' => $summary->spo2,
+                'spo2_text' => $summary->spo2_text ?: ($summary->spo2 !== null ? ((int) $summary->spo2 . '%') : null),
+                'stress' => $summary->stress,
+                'stress_text' => $summary->stress_text,
+            ],
+            'fit_to_work' => [
+                'submitted' => $summary->fit_to_work_submitted_at !== null || $ftwQ1 !== null || $ftwQ2 !== null || $ftwQ3 !== null,
+                'q1' => $ftwQ1,
+                'q2' => $ftwQ2,
+                'q3' => $ftwQ3,
+                'submitted_at' => $summary->fit_to_work_submitted_at ? (string) $summary->fit_to_work_submitted_at : null,
+            ],
+            'app_version' => $summary->app_version,
+            'updated_at' => $summary->updated_at ? (string) $summary->updated_at : null,
+        ];
+    }
+
+    private function formatMobileSummaryWeekDaily(string $date, array $rows): array
+    {
+        $sleepMinutes = array_map(fn ($row) => max(0, (int) ($row['sleep_minutes'] ?? 0)), $rows);
+        $mainSleepMinutes = empty($sleepMinutes) ? 0 : max($sleepMinutes);
+        $totalSleepMinutes = array_sum($sleepMinutes);
+        $latest = collect($rows)->sortByDesc(fn ($row) => ($row['send_date'] ?? '') . ' ' . ($row['send_time'] ?? ''))->first() ?? [];
+
+        return [
+            'date' => $date,
+            'records' => count($rows),
+            'sleep_minutes' => $mainSleepMinutes,
+            'sleep_text' => $this->minutesToTicketSleepText($mainSleepMinutes),
+            'sleep_category' => $this->mobileSleepCategoryFromMinutes($mainSleepMinutes),
+            'total_sleep_minutes' => $totalSleepMinutes,
+            'total_sleep_text' => $this->minutesToTicketSleepText($totalSleepMinutes),
+            'latest_sleep_type' => $latest['sleep_type'] ?? null,
+            'latest_send_time' => $latest['send_time'] ?? null,
+            'items' => array_values($rows),
+        ];
+    }
+
+    private function mobileSleepCategoryFromMinutes(int $minutes): string
+    {
+        $hours = max(0, $minutes) / 60;
+        if ($hours < 4.5) {
+            return 'Langsung dipulangkan';
+        }
+        if ($hours < 5) {
+            return 'Istirahat minimal 2 jam';
+        }
+        if ($hours < 5.5) {
+            return 'Istirahat minimal 1 jam';
+        }
+        if ($hours < 6) {
+            return 'Dapat bekerja';
+        }
+
+        return 'Langsung bekerja';
+    }
+
+    private function formatMobileMetricTimestamp(mixed $timestamp): ?string
+    {
+        $ts = $this->normalizeMetricTs($timestamp);
+        if ($ts <= 0) {
+            return null;
+        }
+
+        return Carbon::createFromTimestamp($ts, 'Asia/Makassar')->format('Y-m-d H:i:s');
     }
 
     public function debugDetailPayload(Request $request)

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Services\MobileMetricFileWriter;
+use App\Services\MobileMetricPayloadNormalizer;
 use App\Support\MobileIngestRuntime;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Bus\Queueable;
@@ -31,7 +32,7 @@ class StoreUserMetricsJob implements ShouldQueue
     }
 
     /**
-     * @param array<int, array{path: string, contents: string}> $files
+     * @param array<int, array{path: string, contents: string, bucket?: string}> $files
      * @param string $source
      */
     public function __construct(protected array $files, protected string $source)
@@ -102,7 +103,14 @@ class StoreUserMetricsJob implements ShouldQueue
                 self::WRITE_LOCK_WAIT_SECONDS,
                 function () use ($cache, $file, $hashKey): bool {
                     $writer = app(MobileMetricFileWriter::class);
-                    $contents = $writer->normalize($file['contents']);
+                    $contents = (string) ($file['contents'] ?? '[]');
+                    $bucket = (string) ($file['bucket'] ?? '');
+                    if ($bucket !== '') {
+                        $contents = app(MobileMetricPayloadNormalizer::class)
+                            ->normalizeForBucket($bucket, $contents);
+                    } else {
+                        $contents = $writer->normalize($contents);
+                    }
                     $hash = hash('sha256', $contents);
                     $existingHash = $cache->get($hashKey);
 

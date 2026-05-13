@@ -12,7 +12,7 @@ use Throwable;
 class LogApiRequest
 {
     private const CACHE_STORE = 'file';
-    private const HIGH_VOLUME_ROUTES = ['summary', 'detail'];
+    private const HIGH_VOLUME_ROUTES = ['summary', 'detail', 'mobile.sleep-snapshot', 'ingest.v2.wearable'];
     private const SLOW_SUCCESS_THRESHOLD_MS = 250.0;
 
     public function handle(Request $request, Closure $next)
