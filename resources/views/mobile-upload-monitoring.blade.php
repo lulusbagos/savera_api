@@ -160,7 +160,7 @@
         }
         .toolbar {
             margin: 18px 0;
-            grid-template-columns: 1fr auto auto auto;
+            grid-template-columns: 1fr auto auto auto auto;
             align-items: center;
         }
         .search, .select, .button {
@@ -178,6 +178,9 @@
             color: white;
             background: linear-gradient(135deg, var(--dark), var(--cyan));
             min-width: 132px;
+        }
+        .button.secondary {
+            background: linear-gradient(135deg, #405565, #718391);
         }
         .live {
             display: inline-flex;
@@ -354,6 +357,10 @@
             <option value="failed">Failed</option>
         </select>
         <button class="button" id="refresh-btn">Refresh</button>
+        <form method="POST" action="{{ route('dashboard-logout') }}" style="margin:0">
+            @csrf
+            <button class="button secondary" type="submit">Logout</button>
+        </form>
         <div class="live"><span class="dot"></span><span id="live-text">Auto 10s</span></div>
     </section>
 

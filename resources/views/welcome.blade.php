@@ -659,6 +659,10 @@
             </button>
             <a href="/docs" class="nav-btn"><i data-lucide="book-open" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>API Docs</a>
             <a href="/upload-monitoring" class="nav-btn"><i data-lucide="upload-cloud" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Upload Monitor</a>
+            <form method="POST" action="{{ route('dashboard-logout') }}" style="margin:0">
+                @csrf
+                <button type="submit" class="nav-btn"><i data-lucide="log-out" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Logout</button>
+            </form>
             <button class="nav-btn" id="refresh-btn"><i data-lucide="refresh-cw" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Refresh</button>
             <button class="nav-btn primary" id="pause-btn"><i data-lucide="pause" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Pause</button>
         </div>

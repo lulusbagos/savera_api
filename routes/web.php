@@ -4,19 +4,27 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Http;
+use App\Http\Controllers\DashboardAuthController;
 use App\Http\Controllers\GoogleController;
 use App\Http\Controllers\LogDashboardController;
 use App\Http\Controllers\MobileUploadMonitoringController;
+use App\Http\Middleware\RequireDashboardPassword;
 
 // =========================
 // 🔹 Default Views
 // =========================
-Route::get('/', fn() => view('welcome'))->name('ops-dashboard');
-Route::get('/upload-monitoring', [MobileUploadMonitoringController::class, 'index'])->name('mobile-upload-monitoring.alias');
-Route::get('/upload-monitoring/stream', [MobileUploadMonitoringController::class, 'stream'])->name('mobile-upload-monitoring.stream');
-Route::get('/ops', fn() => view('welcome'))->name('ops-dashboard.alias');
-Route::get('/docs', fn() => view('docs'));
-Route::get('/sleep', fn() => view('sleep'));
+Route::get('/dashboard-login', [DashboardAuthController::class, 'show'])->name('dashboard-login');
+Route::post('/dashboard-login', [DashboardAuthController::class, 'login'])->name('dashboard-login.submit');
+Route::post('/dashboard-logout', [DashboardAuthController::class, 'logout'])->name('dashboard-logout');
+
+Route::middleware([RequireDashboardPassword::class])->group(function () {
+    Route::get('/', fn() => view('welcome'))->name('ops-dashboard');
+    Route::get('/upload-monitoring', [MobileUploadMonitoringController::class, 'index'])->name('mobile-upload-monitoring.alias');
+    Route::get('/upload-monitoring/stream', [MobileUploadMonitoringController::class, 'stream'])->name('mobile-upload-monitoring.stream');
+    Route::get('/ops', fn() => view('welcome'))->name('ops-dashboard.alias');
+    Route::get('/docs', fn() => view('docs'));
+    Route::get('/sleep', fn() => view('sleep'));
+});
 
 // =========================
 // 🔹 Universal Image Route
@@ -129,8 +137,10 @@ Route::get('logs/{data}/{year}/{month}/{day}/{user}', function () {
     return response(['message' => 'Data not found.'], 404);
 })->name('logs');
 
-Route::get('/logs/stream', [LogDashboardController::class, 'stream'])->name('logs.stream');
-Route::get('/logs/users', [LogDashboardController::class, 'users'])->name('logs.users');
+Route::middleware([RequireDashboardPassword::class])->group(function () {
+    Route::get('/logs/stream', [LogDashboardController::class, 'stream'])->name('logs.stream');
+    Route::get('/logs/users', [LogDashboardController::class, 'users'])->name('logs.users');
+});
 
 // =========================
 // 🔹 Google Sheets API
