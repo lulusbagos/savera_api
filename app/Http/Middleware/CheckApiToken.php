@@ -20,6 +20,11 @@ class CheckApiToken
             $request->is('api/health') ||
             $request->is('api/login') ||
             $request->is('api/register') ||
+            $request->is('api/mobile/app-update') ||
+            $request->is('api/mobile/app-update/*') ||
+            $request->is('api/mobile/app-update-file') ||
+            $request->is('api/mobile/splash') ||
+            $request->is('api/mobile/splash/*') ||
             $request->is('api/article-image') ||
             $request->is('api/article-image/*')
         ) {

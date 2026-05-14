@@ -37,6 +37,12 @@ yarn-error.log
 /storage/framework/testing/disks/mobile_metrics/**/*.json
 /storage/my-spreadsheet.json
 
+# Server-managed mobile assets
+/apk/*
+!/apk/.gitkeep
+/splash/*
+!/splash/.gitkeep
+
 # Operational local logs
 /logs/*.log
 /logs/*.json

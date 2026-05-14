@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\ArticleController;
 use App\Http\Controllers\HealthCheckController;
+use App\Http\Controllers\MobileAppAssetController;
 use App\Http\Controllers\MobileFitToWorkController;
 use App\Http\Controllers\MobileNotificationController;
 use App\Http\Controllers\MobileNetworkController;
@@ -23,6 +24,11 @@ Route::post('login', [AuthController::class, 'login']);
 Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 Route::post('change-password', [AuthController::class, 'changePassword'])->middleware('auth:sanctum');
 Route::get('/health', [HealthCheckController::class, 'check']);
+Route::get('mobile/app-update', [MobileAppAssetController::class, 'update'])->name('mobile.app-update');
+Route::get('mobile/app-update/download', [MobileAppAssetController::class, 'download'])->name('mobile.app-update.download');
+Route::get('mobile/app-update-file', [MobileAppAssetController::class, 'download'])->name('mobile.app-update.file');
+Route::get('mobile/splash', [MobileAppAssetController::class, 'splash'])->name('mobile.splash');
+Route::get('mobile/splash/image', [MobileAppAssetController::class, 'splashImage'])->name('mobile.splash.image');
 Route::get('article-image', [ArticleController::class, 'image'])
     ->name('articles.image');
 Route::get('article-image/{path}', [ArticleController::class, 'image'])
