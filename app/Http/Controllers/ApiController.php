@@ -178,6 +178,9 @@ class ApiController extends Controller
                 ->select($select)
                 ->where('company_id', $company->id)
                 ->whereRaw("{$normalizedSql} = ?", [$normalizedMac])
+                ->orderByRaw("CASE WHEN EXISTS (SELECT 1 FROM employees WHERE employees.device_id = devices.id AND employees.company_id = ? AND employees.deleted_at IS NULL) THEN 0 ELSE 1 END", [$company->id])
+                ->orderByDesc('is_active')
+                ->orderBy('id')
                 ->first();
 
             if ($device) {
@@ -196,24 +199,13 @@ class ApiController extends Controller
                         ->where('employees.company_id', $company->id)
                         ->whereNull('employees.deleted_at');
                 })
+                ->orderByDesc('is_active')
+                ->orderBy('id')
                 ->first();
         });
         if (! $device) {
             return response([
                 'message' => 'Your device\'s MAC address is unavailable.',
-            ], 404);
-        }
-
-        $employee = Cache::store($this->cacheStore())->remember($cacheKey.':employee', 60, function () use ($company, $device) {
-            return Employee::query()
-                ->select(['id', 'code', 'fullname', 'department_id', 'mess_id', 'device_id', 'company_id', 'user_id', 'photo', 'job', 'status'])
-                ->where('company_id', $company->id)
-                ->where('device_id', $device->id)
-                ->first();
-        });
-        if (! $employee) {
-            return response([
-                'message' => 'Your device is not yet bound to an account.',
             ], 404);
         }
 
@@ -229,6 +221,33 @@ class ApiController extends Controller
         }
 
         $isSleepUploader = $this->isSleepUploaderUser($request->user());
+        $employee = Cache::store($this->cacheStore())->remember($cacheKey.':employee', 60, function () use ($company, $device) {
+            return Employee::query()
+                ->select(['id', 'code', 'fullname', 'department_id', 'mess_id', 'device_id', 'company_id', 'user_id', 'photo', 'job', 'status'])
+                ->where('company_id', $company->id)
+                ->where('device_id', $device->id)
+                ->whereNull('deleted_at')
+                ->orderByDesc('status')
+                ->orderBy('id')
+                ->first();
+        });
+        if (! $employee) {
+            if (! $isSleepUploader) {
+                return response([
+                    'message' => 'Your device is not yet bound to an account.',
+                ], 404);
+            }
+
+            $device['employee'] = null;
+            $device['is_own_device'] = 0;
+            $device['can_upload_for_device'] = 0;
+            $device['login_employee_id'] = $loginEmployee->id;
+            $device['is_sleep_uploader'] = 1;
+            $device['device_mapping_status'] = 'unbound';
+
+            return response($device);
+        }
+
         $isOwnDevice = (int) $loginEmployee->id === (int) $employee->id;
         if (! $isSleepUploader && ! $isOwnDevice) {
             return response([
@@ -244,6 +263,7 @@ class ApiController extends Controller
         $device['can_upload_for_device'] = ($isSleepUploader || $isOwnDevice) ? 1 : 0;
         $device['login_employee_id'] = $loginEmployee->id;
         $device['is_sleep_uploader'] = $isSleepUploader ? 1 : 0;
+        $device['device_mapping_status'] = 'bound';
 
         return response($device);
     }
@@ -1000,6 +1020,9 @@ class ApiController extends Controller
             ->select(['id', 'company_id', 'mac_address'])
             ->where('company_id', $companyId)
             ->whereRaw("{$normalizedSql} = ?", [$normalizedMac])
+            ->orderByRaw("CASE WHEN EXISTS (SELECT 1 FROM employees WHERE employees.device_id = devices.id AND employees.company_id = ? AND employees.deleted_at IS NULL) THEN 0 ELSE 1 END", [$companyId])
+            ->orderByDesc('is_active')
+            ->orderBy('id')
             ->first();
 
         if ($device) {
@@ -1016,6 +1039,8 @@ class ApiController extends Controller
                     ->where('employees.company_id', $companyId)
                     ->whereNull('employees.deleted_at');
             })
+            ->orderByDesc('is_active')
+            ->orderBy('id')
             ->first();
     }
 
