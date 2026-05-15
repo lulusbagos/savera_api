@@ -837,7 +837,7 @@
             <div class="card chart-card card-green">
                 <div class="card-head">
                     <div><h3>Storage Write Speed</h3><div class="chart-hint" id="storage-hint">Awaiting data...</div></div>
-                    <span class="pill-outline">60 jobs</span>
+                    <span class="pill-outline" id="storage-window-label">60 jobs</span>
                 </div>
                 <div class="chart-wrap"><canvas id="storageChart"></canvas></div>
             </div>
@@ -940,9 +940,21 @@
                 const res = await fetch('/logs/stream', { credentials: 'same-origin' });
                 if (!res.ok) throw new Error('Fetch failed');
                 const data = await res.json();
+                const rawRequests = Array.isArray(data.requests) ? data.requests : [];
+                const rawStorageDurations = Array.isArray(data.storage_durations) ? data.storage_durations : [];
+                const storageSource = rawStorageDurations.length ? 'storage-write' : 'request-estimate';
+                const storageDurations = rawStorageDurations.length ? rawStorageDurations : rawRequests
+                    .filter(function (entry) {
+                        const route = String(entry.route || entry.uri || '').toLowerCase();
+                        return route.includes('summary') || route.includes('detail') || route.includes('sleep-snapshot') || route.includes('ingest');
+                    })
+                    .map(function (entry) { return Number(entry.duration_ms || 0); })
+                    .filter(function (value) { return Number.isFinite(value) && value > 0; })
+                    .slice(0, 60);
                 state.data = {
                     summary: data.summary||{}, recent: data.recent||[],
-                    requests: data.requests||[], storage_durations: data.storage_durations||[],
+                    requests: rawRequests, storage_durations: storageDurations,
+                    storage_source: storageSource,
                     operations: data.operations||{}, meta: data.meta||{},
                 };
                 const fallbackRecent   = state.data.recent.length   ? state.data.recent   : state.data.requests;
@@ -954,17 +966,22 @@
                 renderTable(applyFilters(fallbackRecent));
                 renderRequests(fallbackRequests);
                 renderChart(fallbackRequests);
-                renderStorageChart(state.data.storage_durations);
+                renderStorageChart(state.data.storage_durations, state.data.storage_source);
                 document.getElementById('last-updated').textContent = 'Updated ' + stamp;
                 if (window.lucide) lucide.createIcons();
             } catch (err) {
+                console.error('Dashboard stream error', err);
                 document.getElementById('last-updated').textContent = 'Error (' + stamp + ')';
                 renderTable([]); renderRequests([]); renderChart([]); renderStorageChart([]); renderAlerts([]);
             }
         }
 
+        function safe(val) {
+            const num = Number(val);
+            return Number.isFinite(num) ? num : 0;
+        }
+
         function renderSummary(summary, meta) {
-            const safe = (val) => typeof val === 'number' ? val : 0;
             const success = safe(summary.api_success), failed = safe(summary.api_failed), total = success + failed;
             const errorRate = (meta && typeof meta.error_rate === 'number') ? meta.error_rate : total ? ((failed/total)*100) : 0;
             document.getElementById('api-success').textContent = success;
@@ -1125,22 +1142,25 @@
             const recent = entries.slice(0, 30).reverse();
             const labels = recent.map(function(e,i){ return e.time ? e.time.split(' ')[1] || ('#'+String(i+1)) : ('#'+String(i+1)); });
             const durations = recent.map(function(e){ return Number(e.duration_ms||0); });
+            const maxDuration = Math.max.apply(null, durations.concat([0]));
+            const yMax = Math.max(10, Math.ceil(maxDuration * 1.25));
             const errorSpikes = recent.map(function(e){
                 const s = Number(e.status || 0);
-                return s >= 500 ? 100 : (s >= 400 ? 60 : 0);
+                return s >= 500 ? Math.max(yMax, 100) : (s >= 400 ? Math.max(yMax * 0.6, 60) : 0);
             });
             const ctx = document.getElementById('reqChart').getContext('2d');
             const grad = ctx.createLinearGradient(0,0,0,280);
             grad.addColorStop(0,'rgba(0,212,255,0.35)'); grad.addColorStop(1,'rgba(0,212,255,0)');
             if (!state.chart) {
                 state.chart = new Chart(ctx, { type:'line', data:{ labels, datasets:[
-                    { label:'Duration (ms)', data:durations, fill:true, tension:0.4, backgroundColor:grad, borderColor:'rgba(0,212,255,0.9)', borderWidth:2, pointRadius:2, pointBackgroundColor:'rgba(0,212,255,1)', pointHoverRadius:5, yAxisID:'y' },
+                    { label:'Duration (ms)', data:durations, fill:true, tension:0.4, backgroundColor:grad, borderColor:'rgba(0,212,255,0.9)', borderWidth:2, pointRadius:3, pointBackgroundColor:'rgba(0,212,255,1)', pointHoverRadius:5, yAxisID:'y' },
                     { type:'bar', label:'Error Spike', data:errorSpikes, borderWidth:0, backgroundColor:'rgba(255,99,132,0.42)', borderRadius:2, yAxisID:'y' }
-                ] }, options:chartOptions() });
+                ] }, options:chartOptions(yMax) });
             } else {
                 state.chart.data.labels = labels;
                 state.chart.data.datasets[0].data = durations;
                 state.chart.data.datasets[1].data = errorSpikes;
+                state.chart.options.scales.y.suggestedMax = yMax;
                 state.chart.update();
             }
             const reqLabel = document.getElementById('req-window-label');
@@ -1148,25 +1168,60 @@
             updateRequestHint(durations);
         }
 
-        function renderStorageChart(durations) {
+        function storagePoint(value) {
+            const raw = Number(value || 0);
+            const timeout = raw >= 1000;
+            const tier = timeout ? 'timeout' : raw > 80 ? 'slow' : raw > 30 ? 'watch' : 'good';
+            const display = timeout ? 155 : Math.max(1, Math.min(raw, 155));
+            return { raw, display, tier, timeout };
+        }
+
+        function storageColor(point, border = false) {
+            if (point.tier === 'timeout') return border ? 'rgba(255,60,90,1)' : 'rgba(255,60,90,0.18)';
+            if (point.tier === 'slow') return border ? 'rgba(255,60,90,1)' : 'rgba(255,60,90,0.72)';
+            if (point.tier === 'watch') return border ? 'rgba(255,184,0,1)' : 'rgba(255,184,0,0.72)';
+            return border ? 'rgba(0,255,170,1)' : 'rgba(0,255,170,0.72)';
+        }
+
+        function renderStorageChart(durations, source) {
             if (typeof Chart === 'undefined') return;
+            durations = Array.isArray(durations) ? durations : [];
             const recent = durations.slice(0, 60).reverse();
-            const labels = recent.map(function(_,i){ return '#'+String(i+1); });
-            const dataPoints = recent.map(function(v){ return Number(v||0); });
-            const bgColors = dataPoints.map(function(v){ return v>80?'rgba(255,60,90,0.7)':v>30?'rgba(255,184,0,0.7)':'rgba(0,255,170,0.7)'; });
-            const bdColors = dataPoints.map(function(v){ return v>80?'rgba(255,60,90,1)':v>30?'rgba(255,184,0,1)':'rgba(0,255,170,1)'; });
+            const points = recent.map(storagePoint).filter(function(p){ return Number.isFinite(p.raw) && p.raw > 0; });
+            const labels = points.map(function(_,i){ return '#'+String(i+1); });
+            const dataPoints = points.map(function(p){ return p.display; });
+            const timeoutPoints = points.map(function(p){ return p.timeout ? p.display : null; });
+            const maxDisplay = Math.max.apply(null, dataPoints.concat([0]));
+            const yMax = Math.max(40, Math.min(180, Math.ceil(maxDisplay * 1.18)));
+            const bgColors = points.map(function(p){ return storageColor(p, false); });
+            const bdColors = points.map(function(p){ return storageColor(p, true); });
             const ctx = document.getElementById('storageChart').getContext('2d');
+            const options = chartOptions(yMax);
+            options.scales.y.title = { display: true, text: 'ms, clipped view', color: cssVar('--chart-tick', '#5b6b83'), font: { family:"'JetBrains Mono',monospace", size:10 } };
+            options.plugins.tooltip.callbacks.label = function(ctx) {
+                const p = points[ctx.dataIndex];
+                if (!p) return '';
+                const status = p.tier === 'timeout' ? 'timeout/estimate' : p.tier === 'slow' ? 'slow' : p.tier === 'watch' ? 'watch' : 'good';
+                return ' raw ' + p.raw.toFixed(p.raw >= 100 ? 0 : 1) + 'ms | shown ' + p.display.toFixed(0) + 'ms | ' + status;
+            };
             if (!state.storageChart) {
-                state.storageChart = new Chart(ctx, { type:'bar', data:{ labels, datasets:[{ label:'Write Speed (ms)', data:dataPoints, backgroundColor:bgColors, borderColor:bdColors, borderWidth:1, borderRadius:3 }] }, options:chartOptions() });
+                state.storageChart = new Chart(ctx, { type:'bar', data:{ labels, datasets:[
+                    { label:'Write Speed, clipped', data:dataPoints, backgroundColor:bgColors, borderColor:bdColors, borderWidth:1, borderRadius:5, minBarLength:4 },
+                    { type:'line', label:'Timeout / estimate', data:timeoutPoints, showLine:false, pointStyle:'rectRot', pointRadius:5, pointHoverRadius:7, pointBackgroundColor:'rgba(255,60,90,1)', pointBorderColor:'#fff', pointBorderWidth:1.5 }
+                ] }, options });
             } else {
                 state.storageChart.data.labels = labels; state.storageChart.data.datasets[0].data = dataPoints;
                 state.storageChart.data.datasets[0].backgroundColor = bgColors; state.storageChart.data.datasets[0].borderColor = bdColors;
+                state.storageChart.data.datasets[1].data = timeoutPoints;
+                state.storageChart.options = options;
                 state.storageChart.update();
             }
-            updateStorageHint(dataPoints); updateStorageHealth(dataPoints);
+            const storageLabel = document.getElementById('storage-window-label');
+            if (storageLabel) storageLabel.textContent = points.length + ' jobs';
+            updateStorageHint(points, source); updateStorageHealth(points);
         }
 
-        function chartOptions() {
+        function chartOptions(suggestedMax) {
             const tickColor = cssVar('--chart-tick', '#5b6b83');
             const gridColor = cssVar('--chart-grid', 'rgba(71, 85, 105, 0.12)');
             const legendColor = cssVar('--text-dim', '#334155');
@@ -1177,7 +1232,7 @@
             return { responsive:true, maintainAspectRatio:false, animation:{duration:350,easing:'easeOutCubic'},
                 scales:{
                     x:{ ticks:{color:tickColor,font:{family:"'JetBrains Mono',monospace",size:9},maxRotation:0}, grid:{color:gridColor}, border:{color:gridColor} },
-                    y:{ ticks:{color:tickColor,font:{family:"'JetBrains Mono',monospace",size:9}}, grid:{color:gridColor}, border:{color:gridColor} }
+                    y:{ beginAtZero:true, suggestedMax: suggestedMax || 10, ticks:{color:tickColor,font:{family:"'JetBrains Mono',monospace",size:9}}, grid:{color:gridColor}, border:{color:gridColor} }
                 },
                 plugins:{ legend:{labels:{color:legendColor,font:{family:"'Poppins',sans-serif",size:11}}}, tooltip:{backgroundColor:tooltipBg,borderColor:tooltipBorder,borderWidth:1,titleColor:tooltipTitle,bodyColor:tooltipBody, callbacks:{label:function(ctx){ return ctx.dataset.label === 'Error Spike' ? (' '+ctx.parsed.y.toFixed(0)+' level') : (' '+ctx.parsed.y.toFixed(1)+' ms'); }}} }
             };
@@ -1210,15 +1265,28 @@
         function updateStorageHealth(points) {
             const el = document.getElementById('storage-health'); if (!el) return;
             if (!points.length) { el.textContent = 'Awaiting data'; return; }
-            const avg = points.reduce(function(a,b){return a+b;},0) / points.length;
-            el.textContent = avg>80 ? 'Slow ('+avg.toFixed(1)+'ms)' : avg>30 ? 'Monitor ('+avg.toFixed(1)+'ms)' : 'Stable ('+avg.toFixed(1)+'ms)';
-            el.className = 'tag ' + (avg>80 ? 'bad' : avg>30 ? 'warn' : 'good');
+            const timeout = points.filter(function(p){ return p.timeout; }).length;
+            const valid = points.filter(function(p){ return !p.timeout; });
+            const avg = valid.length ? valid.reduce(function(a,p){return a+p.raw;},0) / valid.length : 0;
+            const slow = valid.filter(function(p){ return p.tier === 'slow'; }).length;
+            if (timeout > 0) {
+                el.textContent = 'Timeout/estimate ' + timeout;
+                el.className = 'tag bad';
+                return;
+            }
+            el.textContent = slow > 0 || avg > 80 ? 'Slow ('+avg.toFixed(1)+'ms)' : avg > 30 ? 'Monitor ('+avg.toFixed(1)+'ms)' : 'Stable ('+avg.toFixed(1)+'ms)';
+            el.className = 'tag ' + (slow > 0 || avg > 80 ? 'bad' : avg > 30 ? 'warn' : 'good');
         }
-        function updateStorageHint(pts) {
+        function updateStorageHint(points, source) {
             const el = document.getElementById('storage-hint'); if (!el) return;
-            if (!pts.length) { el.textContent = 'Awaiting write jobs... (<30ms good | 30-80ms watch | >80ms slow)'; return; }
-            const avg = pts.reduce(function(a,b){return a+b;},0) / pts.length;
-            el.textContent = 'avg '+avg.toFixed(1)+'ms | last '+pts[0].toFixed(1)+'ms | '+(avg<30?'Good: fast':'avg>30ms: monitor');
+            if (!points.length) { el.textContent = 'Awaiting write jobs... (<30ms good | 30-80ms watch | >80ms slow | 1000ms = timeout/estimate)'; return; }
+            const timeout = points.filter(function(p){ return p.timeout; }).length;
+            const valid = points.filter(function(p){ return !p.timeout; });
+            const avg = valid.length ? valid.reduce(function(a,p){return a+p.raw;},0) / valid.length : 0;
+            const last = points[points.length - 1];
+            const sourceText = source === 'request-estimate' ? 'request estimate' : 'storage write';
+            const lastText = last.timeout ? 'timeout/estimate' : last.raw.toFixed(last.raw >= 100 ? 0 : 1) + 'ms';
+            el.textContent = 'avg valid '+(valid.length ? avg.toFixed(1)+'ms' : '-')+' | last '+lastText+' | timeout '+timeout+' | '+sourceText;
         }
         function updateRequestHint(pts) {
             const el = document.getElementById('req-hint'); if (!el) return;

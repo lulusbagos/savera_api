@@ -105,7 +105,7 @@ class StoreUserMetricsJob implements ShouldQueue
             );
         }
 
-        $this->markBatchCompleted();
+        $this->markBatchCompleted($durations);
         $this->markWorkerHeartbeat('idle', $successfulWrites, 0);
     }
 
@@ -220,7 +220,7 @@ class StoreUserMetricsJob implements ShouldQueue
         }
     }
 
-    private function markBatchCompleted(): void
+    private function markBatchCompleted(array $writeDurations = []): void
     {
         if (! $this->batchId || ! Schema::hasTable('mobile_upload_batches')) {
             return;
@@ -228,15 +228,36 @@ class StoreUserMetricsJob implements ShouldQueue
 
         try {
             $now = Carbon::now('Asia/Makassar');
-            MobileUploadBatch::query()
-                ->whereKey($this->batchId)
-                ->update([
+            $batch = MobileUploadBatch::query()->whereKey($this->batchId)->first();
+            if ($batch) {
+                $extra = is_array($batch->extra_json) ? $batch->extra_json : [];
+                if (!empty($writeDurations)) {
+                    $samples = array_values(array_map(
+                        fn ($duration) => round((float) $duration, 2),
+                        array_filter($writeDurations, fn ($duration) => is_numeric($duration) && (float) $duration >= 0)
+                    ));
+                    if (!empty($samples)) {
+                        $extra['storage_write'] = [
+                            'count' => count($samples),
+                            'avg_ms' => round(array_sum($samples) / count($samples), 2),
+                            'last_ms' => end($samples),
+                            'max_ms' => round(max($samples), 2),
+                            'samples' => array_slice(array_reverse($samples), 0, 12),
+                            'recorded_at' => $now->toDateTimeString(),
+                        ];
+                    }
+                }
+
+                $batch->fill([
                     'status' => 'completed',
                     'completed_at' => $now,
                     'error_code' => null,
                     'error_message' => null,
+                    'extra_json' => $extra,
                     'updated_at' => now(),
                 ]);
+                $batch->save();
+            }
 
             if (Schema::hasTable('mobile_upload_chunks')) {
                 MobileUploadChunk::query()

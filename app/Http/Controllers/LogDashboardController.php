@@ -308,7 +308,7 @@ class LogDashboardController extends Controller
      */
     private function buildRequestFallbackFromUploadMonitoring(): array
     {
-        if (! Schema::hasTable('mobile_upload_batches')) {
+        if (! $this->safeHasTable('mobile_upload_batches')) {
             return [];
         }
 
@@ -356,7 +356,7 @@ class LogDashboardController extends Controller
      */
     private function buildStorageDurationFallback(): array
     {
-        if (! Schema::hasTable('mobile_upload_chunks')) {
+        if (! $this->safeHasTable('mobile_upload_chunks')) {
             return [];
         }
 
@@ -456,10 +456,10 @@ class LogDashboardController extends Controller
 
     private function buildUploadMonitoringSummary(): array
     {
-        if (! Schema::hasTable('mobile_upload_batches')) {
+        if (! $this->safeHasTable('mobile_upload_batches')) {
             return [
                 'enabled' => false,
-                'message' => 'Tabel monitoring upload belum tersedia.',
+                'message' => 'Tabel monitoring upload belum tersedia atau DB monitoring tidak bisa dibaca.',
             ];
         }
 
@@ -472,7 +472,7 @@ class LogDashboardController extends Controller
             ->all();
 
         $workers = [];
-        if (Schema::hasTable('worker_heartbeats')) {
+        if ($this->safeHasTable('worker_heartbeats')) {
             $workers = WorkerHeartbeat::query()
                 ->orderByDesc('last_seen_at')
                 ->limit(5)
@@ -498,6 +498,15 @@ class LogDashboardController extends Controller
             'failed' => (int) ($byStatus['failed'] ?? 0),
             'workers' => $workers,
         ];
+    }
+
+    private function safeHasTable(string $table): bool
+    {
+        try {
+            return Schema::hasTable($table);
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /**

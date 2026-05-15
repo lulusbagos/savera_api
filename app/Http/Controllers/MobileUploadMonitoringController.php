@@ -9,6 +9,7 @@ use App\Support\MobileIngestRuntime;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -23,7 +24,7 @@ class MobileUploadMonitoringController extends Controller
 
     public function stream(Request $request): JsonResponse
     {
-        if (! Schema::hasTable('mobile_upload_batches')) {
+        if (! $this->safeHasTable('mobile_upload_batches')) {
             return response()->json([
                 'enabled' => false,
                 'message' => 'Tabel mobile_upload_batches belum tersedia. Jalankan migration API terlebih dahulu.',
@@ -60,8 +61,8 @@ class MobileUploadMonitoringController extends Controller
             ->map(fn (MobileUploadBatch $batch): array => $this->formatBatch($batch))
             ->values();
 
-        $recentChunks = [];
-        if (Schema::hasTable('mobile_upload_chunks')) {
+        $recentChunks = collect();
+        if ($this->safeHasTable('mobile_upload_chunks')) {
             $recentChunks = MobileUploadChunk::query()
                 ->orderByDesc('received_at')
                 ->orderByDesc('created_at')
@@ -70,6 +71,7 @@ class MobileUploadMonitoringController extends Controller
                 ->map(fn (MobileUploadChunk $chunk): array => $this->formatChunk($chunk))
                 ->values();
         }
+        $storageWrite = $this->storageWriteSummary($recentChunks->all(), $recentBatches->all());
 
         return response()->json([
             'enabled' => true,
@@ -87,6 +89,7 @@ class MobileUploadMonitoringController extends Controller
                 'by_status' => $byStatus,
             ],
             'operations' => $this->operations(),
+            'storage_write' => $storageWrite,
             'workers' => $this->workers(),
             'recent_batches' => $recentBatches,
             'recent_chunks' => $recentChunks,
@@ -132,7 +135,7 @@ class MobileUploadMonitoringController extends Controller
 
     private function workers(): array
     {
-        if (! Schema::hasTable('worker_heartbeats')) {
+        if (! $this->safeHasTable('worker_heartbeats')) {
             return [];
         }
 
@@ -155,7 +158,7 @@ class MobileUploadMonitoringController extends Controller
                     'failed_count' => (int) $worker->failed_count,
                     'last_seen_at' => optional($lastSeen)->toDateTimeString(),
                     'age_seconds' => $ageSeconds,
-                    'fresh' => $ageSeconds !== null && $ageSeconds <= 180,
+                    'fresh' => $ageSeconds !== null && $ageSeconds <= 900,
                 ];
             })
             ->values()
@@ -192,6 +195,7 @@ class MobileUploadMonitoringController extends Controller
             'sleep_type' => $extra['sleep_type'] ?? null,
             'device_time' => $extra['device_time'] ?? null,
             'dispatch_mode' => $extra['dispatch_mode'] ?? null,
+            'storage_write' => $extra['storage_write'] ?? null,
             'received_at' => optional($receivedAt)->toDateTimeString(),
             'queued_at' => optional($batch->queued_at)->toDateTimeString(),
             'processing_started_at' => optional($batch->processing_started_at)->toDateTimeString(),
@@ -207,6 +211,11 @@ class MobileUploadMonitoringController extends Controller
 
     private function formatChunk(MobileUploadChunk $chunk): array
     {
+        $writeDurationMs = null;
+        if ($chunk->processing_started_at && $chunk->processed_at) {
+            $writeDurationMs = $this->durationMs($chunk->processing_started_at, $chunk->processed_at, null);
+        }
+
         return [
             'id' => $chunk->id,
             'upload_id' => $chunk->upload_id,
@@ -221,8 +230,125 @@ class MobileUploadMonitoringController extends Controller
             'received_at' => optional($chunk->received_at)->toDateTimeString(),
             'processed_at' => optional($chunk->processed_at)->toDateTimeString(),
             'failed_at' => optional($chunk->failed_at)->toDateTimeString(),
+            'write_duration_ms' => $writeDurationMs,
             'error_code' => $chunk->error_code,
             'error_message' => Str::limit((string) $chunk->error_message, 120),
         ];
+    }
+
+    /**
+     * Ringkasan kecepatan tulis storage. Utama dari tabel chunks, fallback dari
+     * cache file-store yang ditulis middleware/request monitoring.
+     *
+     * @param array<int, array<string, mixed>> $chunks
+     * @param array<int, array<string, mixed>> $batches
+     * @return array<string, mixed>
+     */
+    private function storageWriteSummary(array $chunks, array $batches = []): array
+    {
+        $durations = [];
+        $source = 'cache';
+        $sourceLabel = 'write cache';
+
+        try {
+            $cached = Cache::store(MobileIngestRuntime::cacheStore('file'))->get('storage_durations', []);
+            if (is_array($cached)) {
+                foreach ($cached as $value) {
+                    if (is_numeric($value) && (float) $value > 0) {
+                        $durations[] = round((float) $value, 2);
+                    }
+                }
+            }
+        } catch (Throwable) {
+            // Cache hanya fallback; jangan gagalkan dashboard kalau store error.
+        }
+
+        if (empty($durations)) {
+            $source = 'batch';
+            $sourceLabel = 'persistent batch';
+            foreach ($batches as $batch) {
+                $write = $batch['storage_write'] ?? null;
+                if (!is_array($write)) {
+                    continue;
+                }
+                $samples = $write['samples'] ?? [];
+                if (is_array($samples) && !empty($samples)) {
+                    foreach ($samples as $value) {
+                        if (is_numeric($value) && (float) $value > 0) {
+                            $durations[] = round((float) $value, 2);
+                        }
+                    }
+                    continue;
+                }
+                foreach (['last_ms', 'avg_ms', 'max_ms'] as $key) {
+                    $value = $write[$key] ?? null;
+                    if (is_numeric($value) && (float) $value > 0) {
+                        $durations[] = round((float) $value, 2);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (empty($durations)) {
+            $source = 'worker_process';
+            $sourceLabel = 'estimasi proses worker';
+            foreach ($chunks as $chunk) {
+                $value = $chunk['write_duration_ms'] ?? null;
+                if ($value !== null && is_numeric($value) && (float) $value > 0) {
+                    $durations[] = round(min((float) $value, 60000.0), 2);
+                }
+            }
+        }
+
+        $durations = array_values(array_slice($durations, 0, 60));
+        $count = count($durations);
+        $avg = $count > 0 ? round(array_sum($durations) / $count, 2) : null;
+        $max = $count > 0 ? round(max($durations), 2) : null;
+        $last = $durations[0] ?? null;
+        $health = 'waiting';
+        if ($avg !== null) {
+            if ($source === 'worker_process') {
+                $health = $avg > 5000 ? 'slow' : ($avg > 2000 ? 'watch' : 'good');
+            } else {
+                $health = $avg > 80 ? 'slow' : ($avg > 30 ? 'watch' : 'good');
+            }
+        }
+
+        return [
+            'count' => $count,
+            'avg_ms' => $avg,
+            'last_ms' => $last,
+            'max_ms' => $max,
+            'health' => $health,
+            'source' => $source,
+            'source_label' => $sourceLabel,
+            'samples' => $durations,
+        ];
+    }
+
+    private function durationMs($start, $end, ?float $fallback): ?float
+    {
+        try {
+            if (! $start || ! $end) {
+                return $fallback;
+            }
+
+            $startMs = (float) Carbon::parse($start)->valueOf();
+            $endMs = (float) Carbon::parse($end)->valueOf();
+
+            return round(min(max($endMs - $startMs, $fallback ?? 0.0), 60000.0), 2);
+        } catch (Throwable) {
+            return $fallback;
+        }
+    }
+
+    private function safeHasTable(string $table): bool
+    {
+        try {
+            return Schema::hasTable($table);
+        } catch (Throwable) {
+            return false;
+        }
     }
 }
