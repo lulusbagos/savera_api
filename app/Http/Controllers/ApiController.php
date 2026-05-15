@@ -217,9 +217,33 @@ class ApiController extends Controller
             ], 404);
         }
 
+        $loginEmployee = Employee::query()
+            ->select(['id', 'code', 'fullname', 'department_id', 'mess_id', 'device_id', 'company_id', 'user_id', 'photo', 'job', 'status'])
+            ->where('company_id', $company->id)
+            ->where('user_id', $request->user()?->id)
+            ->first();
+        if (! $loginEmployee) {
+            return response([
+                'message' => 'Employee not found.',
+            ], 404);
+        }
+
+        $isSleepUploader = $this->isSleepUploaderUser($request->user());
+        $isOwnDevice = (int) $loginEmployee->id === (int) $employee->id;
+        if (! $isSleepUploader && ! $isOwnDevice) {
+            return response([
+                'message' => 'Perangkat ini terdaftar untuk akun lain. Silakan gunakan device yang terdaftar pada akun login Anda atau hubungi admin.',
+                'status' => 'device_employee_mismatch',
+            ], 403);
+        }
+
         $device['employee'] = $employee;
         $device['employee']['department_name'] = (is_null($employee->department_id)) ? null : Department::query()->whereKey($employee->department_id)->value('name');
         $device['employee']['mess_name'] = (is_null($employee->mess_id)) ? null : Mess::query()->whereKey($employee->mess_id)->value('name');
+        $device['is_own_device'] = $isOwnDevice ? 1 : 0;
+        $device['can_upload_for_device'] = ($isSleepUploader || $isOwnDevice) ? 1 : 0;
+        $device['login_employee_id'] = $loginEmployee->id;
+        $device['is_sleep_uploader'] = $isSleepUploader ? 1 : 0;
 
         return response($device);
     }
